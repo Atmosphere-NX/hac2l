@@ -300,7 +300,7 @@ namespace ams::hactool {
                 this->PrintInteger("Wait2 Time Write", enc_data.wait_2_time_write);
                 this->PrintHex8("Fw Mode", enc_data.fw_mode);
                 this->PrintString("Compatibility Type", fs::impl::IdString().ToString(static_cast<fs::GameCardCompatibilityType>(enc_data.compatibility_type)));
-                this->PrintFormat("Cup Version", "%" PRIu32 ".%" PRIu32 ".%" PRIu32 ".%" PRIu32 " (%" PRIu32")", (enc_data.cup_version >> 26) & 0x3F, (enc_data.cup_version >> 20) & 0x3F, (enc_data.cup_version >> 16) & 0x3F, (enc_data.cup_version >> 0) & 0xFFFF, enc_data.cup_version);
+                this->PrintFormat("Cup Version", "%" PRIu32 ".%" PRIu32 ".%" PRIu32 ".%" PRIu32 " (%" PRIu32")", (enc_data.cup_version >> 26) & 0x3F, (enc_data.cup_version >> 20) & 0x3F, (enc_data.cup_version >> 16) & 0xF, (enc_data.cup_version >> 0) & 0xFFFF, enc_data.cup_version);
                 this->PrintId64("Cup Id", enc_data.cup_id);
                 this->PrintBytes("Upp Hash", enc_data.upp_hash, sizeof(enc_data.upp_hash));
             }

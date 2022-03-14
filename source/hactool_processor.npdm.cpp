@@ -591,7 +591,7 @@ namespace ams::hactool {
         }
         this->PrintInteger("Main Thread Priority", ctx.npdm->main_thread_priority);
         this->PrintInteger("Default Cpu Id", ctx.npdm->default_cpu_id);
-        this->PrintFormat("Version", "%" PRIu32 ".%" PRIu32 ".%" PRIu32 ".%" PRIu32 " (%" PRIu32")", (ctx.npdm->version >> 26) & 0x3F, (ctx.npdm->version >> 20) & 0x3F, (ctx.npdm->version >> 16) & 0x3F, (ctx.npdm->version >> 0) & 0xFFFF, ctx.npdm->version);
+        this->PrintFormat("Version", "%" PRIu32 ".%" PRIu32 ".%" PRIu32 ".%" PRIu32 " (%" PRIu32")", (ctx.npdm->version >> 26) & 0x3F, (ctx.npdm->version >> 20) & 0x3F, (ctx.npdm->version >> 16) & 0xF, (ctx.npdm->version >> 0) & 0xFFFF, ctx.npdm->version);
         this->PrintHex("Main Thread Stack Size", ctx.npdm->main_thread_stack_size);
         this->PrintHex("System Resource Size", ctx.npdm->system_resource_size);
         this->PrintString("Program Name", ctx.npdm->program_name);
