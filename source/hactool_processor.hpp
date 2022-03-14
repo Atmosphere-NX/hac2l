@@ -62,7 +62,9 @@ namespace ams::hactool {
                 s32 exefs_index = -1;
                 s32 romfs_index = -1;
                 std::array<bool, fssystem::NcaHeader::FsCountMax> has_sections{};
+                std::array<bool, fssystem::NcaHeader::FsCountMax> has_real_sections{};
                 std::array<bool, fssystem::NcaHeader::FsCountMax> is_mounted{};
+                std::array<std::shared_ptr<fs::IStorage>, fssystem::NcaHeader::FsCountMax> raw_sections{};
                 std::array<std::shared_ptr<fs::IStorage>, fssystem::NcaHeader::FsCountMax> sections{};
                 std::array<std::shared_ptr<fssystem::IAsynchronousAccessSplitter>, fssystem::NcaHeader::FsCountMax> splitters{};
                 std::array<fssystem::NcaFsHeaderReader, fssystem::NcaHeader::FsCountMax> header_readers{};
@@ -111,6 +113,10 @@ namespace ams::hactool {
                 this->PrintString("Magic", magic_str);
             }
 
+            static void MakeVerifyFieldName(char *dst, size_t dst_size, const char *name, bool verified) {
+                util::TSNPrintf(dst, dst_size, "%s %s", name, verified ? "(GOOD)" : "(FAIL)");
+            }
+
             void PrintHex(const char *field_name, u64 v) const { this->PrintFormat(field_name, "0x%" PRIX64, v); }
             void PrintHex2(const char *field_name, u64 v) const { this->PrintFormat(field_name, "0x%02" PRIX64, v); }
             void PrintHex4(const char *field_name, u64 v) const { this->PrintFormat(field_name, "0x%04" PRIX64, v); }
@@ -141,6 +147,13 @@ namespace ams::hactool {
                 if (byte_str_len > 0) {
                     this->PrintFormat(field_name, "%s", byte_str);
                 }
+            }
+
+            void PrintBytesWithVerify(const char *field_name, bool verified, const void *src, size_t src_size) {
+                char verif_field_name[0x40];
+                MakeVerifyFieldName(verif_field_name, sizeof(verif_field_name), field_name, verified);
+
+                return this->PrintBytes(verif_field_name, src, src_size);
             }
 
             /* Utility/management. */

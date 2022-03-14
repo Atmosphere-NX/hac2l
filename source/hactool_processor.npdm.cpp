@@ -606,7 +606,24 @@ namespace ams::hactool {
 
             this->PrintHex("Sign Key Generation", ctx.npdm->signature_key_generation);
 
-            this->PrintBytes("Signature", ctx.acid->signature, sizeof(ctx.acid->signature));
+            if (m_options.verify) {
+                /* Verify the signature. */
+                const u8 *sig         = ctx.acid->signature;
+                const size_t sig_size = sizeof(ctx.acid->signature);
+                const u8 *mod         = fssystem::GetAcidSignatureKeyModulus(!m_options.dev, ctx.npdm->signature_key_generation);
+                const size_t mod_size = fssystem::AcidSignatureKeyModulusSize;
+                const u8 *exp         = fssystem::GetAcidSignatureKeyPublicExponent();
+                const size_t exp_size = fssystem::AcidSignatureKeyPublicExponentSize;
+                const u8 *msg         = ctx.acid->modulus;
+                const size_t msg_size = ctx.acid->size;
+
+                const bool is_signature_valid = crypto::VerifyRsa2048PssSha256(sig, sig_size, mod, mod_size, exp, exp_size, msg, msg_size);
+
+                this->PrintBytesWithVerify("Signature", is_signature_valid, ctx.acid->signature, sizeof(ctx.acid->signature));
+            } else {
+                this->PrintBytes("Signature", ctx.acid->signature, sizeof(ctx.acid->signature));
+            }
+
             this->PrintBytes("HeaderSign2 Modulus", ctx.acid->modulus, sizeof(ctx.acid->modulus));
 
             this->PrintHex2("Flags", ctx.acid->flags);

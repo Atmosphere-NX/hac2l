@@ -131,64 +131,73 @@ namespace ams::hactool {
         std::shared_ptr<fs::IStorage> npdm_storage;
 
         for (s32 i = 0; i < fssystem::NcaHeader::FsCountMax; ++i) {
-            const auto res = util::GetReference(g_storage_on_nca_creator).CreateWithContext(std::addressof(ctx->sections[i]), std::addressof(ctx->splitters[i]), std::addressof(ctx->header_readers[i]), std::addressof(ctx->storage_contexts[i]), ctx->reader, i);
+            ctx->storage_contexts[i].open_raw_storage = true;
+            const auto res = util::GetReference(g_storage_on_nca_creator).CreateWithContext(std::addressof(ctx->raw_sections[i]), std::addressof(ctx->splitters[i]), std::addressof(ctx->header_readers[i]), std::addressof(ctx->storage_contexts[i]), ctx->reader, i);
             if (R_SUCCEEDED(res)) {
                 ctx->has_sections[i] = true;
 
-                /* Try to mount the section. */
-                const auto fs_type = ctx->header_readers[i].GetFsType();
-                switch (fs_type) {
-                    case fssystem::NcaFsHeader::FsType::PartitionFs:
-                        {
-                            const auto mount_res = util::GetReference(g_partition_fs_creator).Create(std::addressof(ctx->file_systems[i]), ctx->sections[i]);
-                            if (R_SUCCEEDED(mount_res)) {
-                                ctx->is_mounted[i] = true;
+                /* Try to open the non-raw section. */
+                const auto real_res = util::GetReference(g_storage_on_nca_creator).CreateByRawStorage(std::addressof(ctx->sections[i]), std::addressof(ctx->splitters[i]), std::addressof(ctx->header_readers[i]), std::shared_ptr<fs::IStorage>(ctx->raw_sections[i]), std::addressof(ctx->storage_contexts[i]), ctx->reader);
+                if (R_SUCCEEDED(real_res)) {
+                    ctx->has_real_sections[i] = true;
 
-                                /* Check if section is exefs. */
-                                if (ctx->exefs_index < 0 && ctx->reader->GetContentType() == fssystem::NcaHeader::ContentType::Program) {
-                                    bool is_exefs = false;
-                                    const auto check_npdm_res = fssystem::HasFile(std::addressof(is_exefs), ctx->file_systems[i].get(), fs::MakeConstantPath("/main.npdm"));
-                                    if (R_SUCCEEDED(check_npdm_res)) {
-                                        if (is_exefs) {
-                                            ctx->exefs_index = i;
+                    /* Try to mount the section. */
+                    const auto fs_type = ctx->header_readers[i].GetFsType();
+                    switch (fs_type) {
+                        case fssystem::NcaFsHeader::FsType::PartitionFs:
+                            {
+                                const auto mount_res = util::GetReference(g_partition_fs_creator).Create(std::addressof(ctx->file_systems[i]), ctx->sections[i]);
+                                if (R_SUCCEEDED(mount_res)) {
+                                    ctx->is_mounted[i] = true;
 
-                                            if (const auto open_npdm_res = OpenFileStorage(std::addressof(npdm_storage), ctx->file_systems[i], "/main.npdm"); R_FAILED(open_npdm_res)) {
-                                                fprintf(stderr, "[Warning]: main.npdm exists in exefs section %d but could not be opened: 2%03d-%04d\n", i, open_npdm_res.GetModule(), open_npdm_res.GetDescription());
+                                    /* Check if section is exefs. */
+                                    if (ctx->exefs_index < 0 && ctx->reader->GetContentType() == fssystem::NcaHeader::ContentType::Program) {
+                                        bool is_exefs = false;
+                                        const auto check_npdm_res = fssystem::HasFile(std::addressof(is_exefs), ctx->file_systems[i].get(), fs::MakeConstantPath("/main.npdm"));
+                                        if (R_SUCCEEDED(check_npdm_res)) {
+                                            if (is_exefs) {
+                                                ctx->exefs_index = i;
+
+                                                if (const auto open_npdm_res = OpenFileStorage(std::addressof(npdm_storage), ctx->file_systems[i], "/main.npdm"); R_FAILED(open_npdm_res)) {
+                                                    fprintf(stderr, "[Warning]: main.npdm exists in exefs section %d but could not be opened: 2%03d-%04d\n", i, open_npdm_res.GetModule(), open_npdm_res.GetDescription());
+                                                }
                                             }
+                                        } else {
+                                            fprintf(stderr, "[Warning]: Failed to check if NCA section %d is exefs: 2%03d-%04d\n", i, check_npdm_res.GetModule(), check_npdm_res.GetDescription());
                                         }
-                                    } else {
-                                        fprintf(stderr, "[Warning]: Failed to check if NCA section %d is exefs: 2%03d-%04d\n", i, check_npdm_res.GetModule(), check_npdm_res.GetDescription());
                                     }
+                                } else {
+                                    fprintf(stderr, "[Warning]: Failed to mount NCA section %d as PartitionFileSystem: 2%03d-%04d\n", i, mount_res.GetModule(), mount_res.GetDescription());
                                 }
-                            } else {
-                                fprintf(stderr, "[Warning]: Failed to mount NCA section %d as PartitionFileSystem: 2%03d-%04d\n", i, mount_res.GetModule(), mount_res.GetDescription());
                             }
-                        }
-                        break;
-                    case fssystem::NcaFsHeader::FsType::RomFs:
-                        {
-                            const auto mount_res = util::GetReference(g_rom_fs_creator).Create(std::addressof(ctx->file_systems[i]), ctx->sections[i]);
-                            if (R_SUCCEEDED(mount_res)) {
-                                ctx->is_mounted[i] = true;
+                            break;
+                        case fssystem::NcaFsHeader::FsType::RomFs:
+                            {
+                                const auto mount_res = util::GetReference(g_rom_fs_creator).Create(std::addressof(ctx->file_systems[i]), ctx->sections[i]);
+                                if (R_SUCCEEDED(mount_res)) {
+                                    ctx->is_mounted[i] = true;
 
-                                if (ctx->romfs_index < 0) {
-                                    ctx->romfs_index = i;
+                                    if (ctx->romfs_index < 0) {
+                                        ctx->romfs_index = i;
+                                    }
+
+                                } else {
+                                    fprintf(stderr, "[Warning]: Failed to mount NCA section %d as RomFsFileSystem: 2%03d-%04d\n", i, mount_res.GetModule(), mount_res.GetDescription());
                                 }
-
-                            } else {
-                                fprintf(stderr, "[Warning]: Failed to mount NCA section %d as RomFsFileSystem: 2%03d-%04d\n", i, mount_res.GetModule(), mount_res.GetDescription());
                             }
-                        }
-                        break;
-                    default:
-                        fprintf(stderr, "[Warning]: NCA section %d has unknown section type %d\n", i, static_cast<int>(fs_type));
-                        break;
+                            break;
+                        default:
+                            fprintf(stderr, "[Warning]: NCA section %d has unknown section type %d\n", i, static_cast<int>(fs_type));
+                            break;
+                    }
+                } else {
+                    fprintf(stderr, "[Warning]: Failed to open NCA section %d: 2%03d-%04d, NCA may be corrupt.\n", i, res.GetModule(), res.GetDescription());
                 }
             } else if (fs::ResultPartitionNotFound::Includes(res)) {
                 ctx->has_sections[i] = false;
             } else {
                 /* TODO: Should we stop here instead of pretending the NCA doesn't have this section? */
-                fprintf(stderr, "[Warning]: Failed to open NCA section %d: 2%03d-%04d\n", i, res.GetModule(), res.GetDescription());
+                fprintf(stderr, "[Warning]: Failed to open raw NCA section %d: 2%03d-%04d\n", i, res.GetModule(), res.GetDescription());
             }
         }
 
@@ -222,8 +231,33 @@ namespace ams::hactool {
 
         this->PrintMagic(ctx.reader->GetMagic());
         this->PrintHex("HeaderSign1 Key Generation", ctx.reader->GetHeaderSign1KeyGeneration());
-        this->PrintBytes("HeaderSign1:", raw_header.header_sign_1, sizeof(raw_header.header_sign_1));
-        this->PrintBytes("HeaderSign2:", raw_header.header_sign_2, sizeof(raw_header.header_sign_2));
+        if (!m_options.verify) {
+            this->PrintBytes("HeaderSign1", raw_header.header_sign_1, sizeof(raw_header.header_sign_1));
+            this->PrintBytes("HeaderSign2", raw_header.header_sign_2, sizeof(raw_header.header_sign_2));
+        } else {
+            this->PrintBytesWithVerify("HeaderSign1", ctx.reader->GetHeaderSign1Valid(), raw_header.header_sign_1, sizeof(raw_header.header_sign_1));
+
+            if (ctx.reader->GetContentType() == fssystem::NcaHeader::ContentType::Program) {
+                bool is_header_sign2_valid = false;
+                if (ctx.npdm_ctx.modulus != nullptr) {
+                    const u8 *sig         = raw_header.header_sign_2;
+                    const size_t sig_size = sizeof(raw_header.header_sign_2);
+                    const u8 *mod         = static_cast<const u8 *>(ctx.npdm_ctx.modulus);
+                    const size_t mod_size = crypto::Rsa2048PssSha256Verifier::ModulusSize;
+                    const u8 *exp         = fssystem::GetAcidSignatureKeyPublicExponent();
+                    const size_t exp_size = fssystem::AcidSignatureKeyPublicExponentSize;
+
+                    u8 hsh[fssystem::IHash256Generator::HashSize];
+                    ctx.reader->GetHeaderSign2TargetHash(hsh, sizeof(hsh));
+
+                    is_header_sign2_valid = crypto::VerifyRsa2048PssSha256WithHash(sig, sig_size, mod, mod_size, exp, exp_size, hsh, sizeof(hsh));
+                }
+
+                this->PrintBytesWithVerify("HeaderSign2", is_header_sign2_valid, raw_header.header_sign_2, sizeof(raw_header.header_sign_2));
+            } else {
+                this->PrintBytes("HeaderSign2", raw_header.header_sign_2, sizeof(raw_header.header_sign_2));
+            }
+        }
         this->PrintHex12("Content Size", ctx.reader->GetContentSize());
 
         union {
@@ -343,11 +377,6 @@ namespace ams::hactool {
 
         /* Process sections. */
         for (s32 i = 0; i < fssystem::NcaHeader::FsCountMax; ++i) {
-            /* If we don't have the section, do nothing. */
-            if (!ctx.has_sections[i]) {
-                continue;
-            }
-
             /* TODO: Save section as file, including raw. */
             {
                 /* Determine path to save to. */
@@ -364,7 +393,11 @@ namespace ams::hactool {
 
                 /* If we have a path, save to it. */
                 if (path != nullptr) {
-                    SaveToFile(m_local_fs, path, ctx.sections[i].get());
+                    if (m_options.raw && ctx.has_sections[i]) {
+                        SaveToFile(m_local_fs, path, ctx.raw_sections[i].get());
+                    } else if (ctx.has_real_sections[i]) {
+                        SaveToFile(m_local_fs, path, ctx.sections[i].get());
+                    }
                 }
             }
 
