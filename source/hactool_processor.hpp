@@ -73,6 +73,36 @@ namespace ams::hactool {
 
                 ProcessAsNpdmContext npdm_ctx;
             };
+
+            struct ProcessAsXciContext {
+                std::shared_ptr<fs::IStorage> storage;
+
+                std::shared_ptr<fs::IStorage> key_area_storage;
+                std::shared_ptr<fs::IStorage> body_storage;
+
+                struct CardData {
+                    gc::impl::CardInitialData initial_data;
+                    gc::impl::CardHeaderWithSignature header;
+                    gc::impl::CardHeaderWithSignature decrypted_header;
+                    gc::impl::CardHeaderWithSignature header_for_hash;
+                    gc::impl::CardHeaderWithSignature decrypted_header_for_hash;
+                    gc::impl::T1CardCertificate t1_certificate;
+                    gc::impl::Ca10Certificate ca10_certificate;
+                };
+
+                CardData card_data;
+
+                struct PartitionData {
+                    std::shared_ptr<fs::IStorage> storage;
+                    std::shared_ptr<fs::fsa::IFileSystem> fs;
+                };
+
+                PartitionData root_partition;
+                PartitionData update_partition;
+                PartitionData logo_partition;
+                PartitionData normal_partition;
+                PartitionData secure_partition;
+            };
         private:
             Options m_options;
             fssrv::impl::ExternalKeyManager m_external_nca_key_manager;
@@ -162,14 +192,17 @@ namespace ams::hactool {
             /* Procesing. */
             Result ProcessAsNca(std::shared_ptr<fs::IStorage> storage, ProcessAsNcaContext *ctx = nullptr);
             Result ProcessAsNpdm(std::shared_ptr<fs::IStorage> storage, ProcessAsNpdmContext *ctx = nullptr);
+            Result ProcessAsXci(std::shared_ptr<fs::IStorage> storage, ProcessAsXciContext *ctx = nullptr);
 
             /* Printing. */
             void PrintAsNca(ProcessAsNcaContext &ctx);
             void PrintAsNpdm(ProcessAsNpdmContext &ctx);
+            void PrintAsXci(ProcessAsXciContext &ctx);
 
             /* Saving. */
             void SaveAsNca(ProcessAsNcaContext &ctx);
             void SaveAsNpdm(ProcessAsNpdmContext &ctx);
+            void SaveAsXci(ProcessAsXciContext &ctx);
     };
 
     inline void Processor::PrintLineImpl(const char *fmt, ...) const {

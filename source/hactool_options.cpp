@@ -106,7 +106,15 @@ namespace ams::hactool {
             MakeOptionHandler("intype", 't', [] (Options &options, const char *arg) {
                 if (std::strcmp(arg, "npdm") == 0) {
                     options.file_type = FileType::Npdm;
+                } else if (std::strcmp(arg, "nca") == 0) {
+                    options.file_type = FileType::Nca;
+                } else if (std::strcmp(arg, "xci") == 0) {
+                    options.file_type = FileType::Xci;
+                } else {
+                    return false;
                 }
+
+                return true;
             }),
             MakeOptionHandler("dev", 'd', [] (Options &options) { options.dev = true; }),
             MakeOptionHandler("verify", 'y', [] (Options &options) { options.verify = true; }),

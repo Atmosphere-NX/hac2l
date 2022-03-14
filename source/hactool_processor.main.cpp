@@ -47,6 +47,9 @@ namespace ams::hactool {
             case FileType::Npdm:
                 R_TRY(this->ProcessAsNpdm(std::move(input)));
                 break;
+            case FileType::Xci:
+                R_TRY(this->ProcessAsXci(std::move(input)));
+                break;
             AMS_UNREACHABLE_DEFAULT_CASE();
         }
 

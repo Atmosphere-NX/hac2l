@@ -501,6 +501,11 @@ namespace ams::hactool {
             spl::smc::PresetInternalKey(reinterpret_cast<const spl::AesKey *>(std::addressof(g_keyset.master_keys[gen])), gen, false);
         }
 
+        /* Set internal keys for gamecard library. */
+        if (const auto res = gc::impl::EmbeddedDataHolder::SetLibraryEmbeddedKeys(m_options.dev); R_FAILED(res)) {
+            fprintf(stderr, "[Warning]: Failed to preset internal keys for gamecard library (2%03d-%04d). Is master_key_04 correct?\n", res.GetModule(), res.GetDescription());
+        }
+
         /* Load titlekeys. */
         if (m_options.titlekey_path != nullptr) {
             LoadKeyValueFile(m_options.titlekey_path, [&](const char *key, const char *value) {
