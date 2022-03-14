@@ -241,6 +241,12 @@ namespace ams::hactool {
             R_UNLESS(path != nullptr, fs::ResultNullptrArgument());
             R_TRY(fs_path.SetShallowBuffer(path));
 
+            /* Delete an existing file, this is allowed to fail. */
+            fs->DeleteFile(fs_path);
+
+            /* Create the file. */
+            R_TRY(fs->CreateFile(fs_path, size));
+
             /* Open the file. */
             std::unique_ptr<fs::fsa::IFile> base_file;
             R_TRY(fs->OpenFile(std::addressof(base_file), fs_path, fs::OpenMode_ReadWrite));

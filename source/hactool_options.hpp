@@ -57,6 +57,7 @@ namespace ams::hactool {
         const char *plaintext_out_path = nullptr;
         const char *ciphertext_out_path = nullptr;
         const char *uncompressed_out_path = nullptr;
+        const char *json_out_file_path = nullptr;
         bool list_romfs = false;
         /* TODO: More things. */
     };

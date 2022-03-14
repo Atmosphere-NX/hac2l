@@ -15,7 +15,10 @@
  */
 #include <stratosphere.hpp>
 #include <vapours/svc/svc_definition_macro.hpp>
+#include <stratosphere/rapidjson/document.h>
+#include <stratosphere/rapidjson/prettywriter.h>
 #include "hactool_processor.hpp"
+#include "hactool_fs_utils.hpp"
 
 namespace ams::hactool {
 
@@ -356,6 +359,130 @@ namespace ams::hactool {
             return false;
         }
 
+        struct ParsedKernelCapabilities {
+            util::optional<util::BitPack32> core_prio = util::nullopt;
+            SystemCallFlagSet system_calls{};
+            InterruptFlagSet interrupts{};
+            util::optional<util::BitPack32> program_type   = util::nullopt;
+            util::optional<util::BitPack32> kernel_version = util::nullopt;
+            util::optional<util::BitPack32> handle_table   = util::nullopt;
+            util::optional<util::BitPack32> debug_flags    = util::nullopt;
+            util::optional<util::BitPack32> mapped_regions = util::nullopt;
+
+            MappedRangeHolder mapped_static_ranges{};
+            MappedRangeHolder mapped_io_ranges{};
+            util::optional<util::BitPack32> unknown_caps[0x40]{};
+            size_t num_unknown_caps = 0;
+        };
+
+        void ParseKernelCapabilities(ParsedKernelCapabilities *out, const util::BitPack32 *caps, size_t num_caps) {
+            /* Walk all caps. */
+            for (size_t i = 0; i < num_caps; ++i) {
+                switch (GetCapabilityType(caps[i])) {
+                    using enum CapabilityType;
+                    case CorePriority:
+                        if (out->core_prio.has_value()) {
+                            fprintf(stderr, "[Warning]: KernelAccessControl contains multiple CorePriority capabilities\n");
+                        }
+                        out->core_prio = caps[i];
+                        break;
+                    case SyscallMask:
+                        {
+                            const auto mask  = caps[i].Get<SyscallMask::Mask>();
+                            const auto index = caps[i].Get<SyscallMask::Index>();
+
+                            for (size_t n = 0; n < SyscallMask::Mask::Count; ++n) {
+                                const u32 svc_id = SyscallMask::Mask::Count * index + n;
+                                if (mask & (1u << n)) {
+                                    out->system_calls[svc_id] = true;
+                                }
+                            }
+                        }
+                        break;
+                    case MapRange:
+                        {
+                            if (i + 1 < num_caps) {
+                                const auto cap      = caps[i++];
+                                const auto size_cap = caps[i];
+                                if (GetCapabilityType(size_cap) == MapRange) {
+                                    const u64 phys_addr = static_cast<u64>(cap.Get<MapRange::Address>() | (size_cap.Get<MapRangeSize::AddressHigh>() << MapRange::Address::Count)) * os::MemoryPageSize;
+
+                                    const size_t num_pages = size_cap.Get<MapRangeSize::Pages>();
+                                    const size_t size      = num_pages * os::MemoryPageSize;
+
+                                    const bool is_ro = cap.Get<MapRange::ReadOnly>();
+                                    if (size_cap.Get<MapRangeSize::Normal>()) {
+                                        out->mapped_static_ranges.Insert(phys_addr, size, is_ro);
+                                    } else {
+                                        out->mapped_io_ranges.Insert(phys_addr, size, is_ro);
+                                    }
+                                } else {
+                                    fprintf(stderr, "[Warning]: KernelAccessControl contains invalid MapRange pair\n");
+                                }
+                            } else {
+                                fprintf(stderr, "[Warning]: KernelAccessControl truncates during MapRange pair\n");
+                            }
+                        }
+                        break;
+                    case MapIoPage:
+                        {
+                            const u64 phys_addr = caps[i].Get<MapIoPage::Address>() * os::MemoryPageSize;
+                            out->mapped_io_ranges.Insert(phys_addr, os::MemoryPageSize, false);
+                        }
+                        break;
+                    case MapRegion:
+                        if (out->mapped_regions.has_value()) {
+                            fprintf(stderr, "[Warning]: KernelAccessControl contains multiple MapRegion capabilities\n");
+                        }
+                        out->mapped_regions = caps[i];
+                        break;
+                    case InterruptPair:
+                        {
+                            const u32 ids[2] = { caps[i].Get<InterruptPair::InterruptId0>(), caps[i].Get<InterruptPair::InterruptId1>(), };
+                            for (size_t i = 0; i < util::size(ids); ++i) {
+                                if (ids[i] != PaddingInterruptId) {
+                                    out->interrupts[ids[i]] = true;
+                                }
+                            }
+                        }
+                        break;
+                    case ProgramType:
+                        if (out->program_type.has_value()) {
+                            fprintf(stderr, "[Warning]: KernelAccessControl contains multiple ProgramType capabilities\n");
+                        }
+                        out->program_type = caps[i];
+                        break;
+                    case KernelVersion:
+                        if (out->kernel_version.has_value()) {
+                            fprintf(stderr, "[Warning]: KernelAccessControl contains multiple KernelVersion capabilities\n");
+                        }
+                        out->kernel_version = caps[i];
+                        break;
+                    case HandleTable:
+                        if (out->handle_table.has_value()) {
+                            fprintf(stderr, "[Warning]: KernelAccessControl contains multiple HandleTable capabilities\n");
+                        }
+                        out->handle_table = caps[i];
+                        break;
+                    case DebugFlags:
+                        if (out->debug_flags.has_value()) {
+                            fprintf(stderr, "[Warning]: KernelAccessControl contains multiple DebugFlags capabilities\n");
+                        }
+                        out->debug_flags = caps[i];
+                        break;
+                    case Invalid:
+                        fprintf(stderr, "[Warning]: KernelAccessControl contains invalid capability\n");
+                        break;
+                    case Padding:
+                        break;
+                    default:
+                        AMS_ABORT_UNLESS(out->num_unknown_caps < util::size(out->unknown_caps));
+                        out->unknown_caps[out->num_unknown_caps++] = caps[i];
+                        break;
+                }
+            }
+        }
+
     }
 
     /* Procesing. */
@@ -499,7 +626,7 @@ namespace ams::hactool {
                     case PoolPartition_SystemNonSecure: this->PrintString("Pool Partition", "SystemNonSecure"); break;
                 }
 
-                this->PrintFormat("Program Id Range", "%016" PRIx64 "-%016" PRIx64, ctx.acid->program_id_min.value, ctx.acid->program_id_max.value);
+                this->PrintFormat("Program Id Range", "%016" PRIX64 "-%016" PRIX64, ctx.acid->program_id_min.value, ctx.acid->program_id_max.value);
             }
         }
 
@@ -517,129 +644,12 @@ namespace ams::hactool {
             auto PrintKernelAccessControl = [&] (const char *name, const util::BitPack32 *caps, size_t num_caps) {
                 auto _ = this->PrintHeader(name);
 
-                util::optional<util::BitPack32> core_prio = util::nullopt;
-                SystemCallFlagSet system_calls{};
-                InterruptFlagSet interrupts{};
-                util::optional<util::BitPack32> program_type   = util::nullopt;
-                util::optional<util::BitPack32> kernel_version = util::nullopt;
-                util::optional<util::BitPack32> handle_table   = util::nullopt;
-                util::optional<util::BitPack32> debug_flags    = util::nullopt;
-                util::optional<util::BitPack32> mapped_regions = util::nullopt;
-
-                MappedRangeHolder mapped_static_ranges{};
-                MappedRangeHolder mapped_io_ranges{};
-                util::optional<util::BitPack32> unknown_caps[0x40]{};
-                size_t num_unknown_caps = 0;
-
-                /* Walk all caps. */
-                for (size_t i = 0; i < num_caps; ++i) {
-                    switch (GetCapabilityType(caps[i])) {
-                        using enum CapabilityType;
-                        case CorePriority:
-                            if (core_prio.has_value()) {
-                                fprintf(stderr, "[Warning]: KernelAccessControl contains multiple CorePriority capabilities\n");
-                            }
-                            core_prio = caps[i];
-                            break;
-                        case SyscallMask:
-                            {
-                                const auto mask  = caps[i].Get<SyscallMask::Mask>();
-                                const auto index = caps[i].Get<SyscallMask::Index>();
-
-                                for (size_t n = 0; n < SyscallMask::Mask::Count; ++n) {
-                                    const u32 svc_id = SyscallMask::Mask::Count * index + n;
-                                    if (mask & (1u << n)) {
-                                        system_calls[svc_id] = true;
-                                    }
-                                }
-                            }
-                            break;
-                        case MapRange:
-                            {
-                                if (i + 1 < num_caps) {
-                                    const auto cap      = caps[i++];
-                                    const auto size_cap = caps[i];
-                                    if (GetCapabilityType(size_cap) == MapRange) {
-                                        const u64 phys_addr = static_cast<u64>(cap.Get<MapRange::Address>() | (size_cap.Get<MapRangeSize::AddressHigh>() << MapRange::Address::Count)) * os::MemoryPageSize;
-
-                                        const size_t num_pages = size_cap.Get<MapRangeSize::Pages>();
-                                        const size_t size      = num_pages * os::MemoryPageSize;
-
-                                        const bool is_ro = cap.Get<MapRange::ReadOnly>();
-                                        if (size_cap.Get<MapRangeSize::Normal>()) {
-                                            mapped_static_ranges.Insert(phys_addr, size, is_ro);
-                                        } else {
-                                            mapped_io_ranges.Insert(phys_addr, size, is_ro);
-                                        }
-                                    } else {
-                                        fprintf(stderr, "[Warning]: KernelAccessControl contains invalid MapRange pair\n");
-                                    }
-                                } else {
-                                    fprintf(stderr, "[Warning]: KernelAccessControl truncates during MapRange pair\n");
-                                }
-                            }
-                            break;
-                        case MapIoPage:
-                            {
-                                const u64 phys_addr = caps[i].Get<MapIoPage::Address>() * os::MemoryPageSize;
-                                mapped_io_ranges.Insert(phys_addr, os::MemoryPageSize, false);
-                            }
-                            break;
-                        case MapRegion:
-                            if (mapped_regions.has_value()) {
-                                fprintf(stderr, "[Warning]: KernelAccessControl contains multiple MapRegion capabilities\n");
-                            }
-                            mapped_regions = caps[i];
-                            break;
-                        case InterruptPair:
-                            {
-                                const u32 ids[2] = { caps[i].Get<InterruptPair::InterruptId0>(), caps[i].Get<InterruptPair::InterruptId1>(), };
-                                for (size_t i = 0; i < util::size(ids); ++i) {
-                                    if (ids[i] != PaddingInterruptId) {
-                                        interrupts[ids[i]] = true;
-                                    }
-                                }
-                            }
-                            break;
-                        case ProgramType:
-                            if (program_type.has_value()) {
-                                fprintf(stderr, "[Warning]: KernelAccessControl contains multiple ProgramType capabilities\n");
-                            }
-                            program_type = caps[i];
-                            break;
-                        case KernelVersion:
-                            if (kernel_version.has_value()) {
-                                fprintf(stderr, "[Warning]: KernelAccessControl contains multiple KernelVersion capabilities\n");
-                            }
-                            kernel_version = caps[i];
-                            break;
-                        case HandleTable:
-                            if (handle_table.has_value()) {
-                                fprintf(stderr, "[Warning]: KernelAccessControl contains multiple HandleTable capabilities\n");
-                            }
-                            handle_table = caps[i];
-                            break;
-                        case DebugFlags:
-                            if (debug_flags.has_value()) {
-                                fprintf(stderr, "[Warning]: KernelAccessControl contains multiple DebugFlags capabilities\n");
-                            }
-                            debug_flags = caps[i];
-                            break;
-                        case Invalid:
-                            fprintf(stderr, "[Warning]: KernelAccessControl contains invalid capability\n");
-                            break;
-                        case Padding:
-                            break;
-                        default:
-                            AMS_ABORT_UNLESS(num_unknown_caps < util::size(unknown_caps));
-                            unknown_caps[num_unknown_caps++] = caps[i];
-                            break;
-                    }
-                }
+                ParsedKernelCapabilities parsed;
+                ParseKernelCapabilities(std::addressof(parsed), caps, num_caps);
 
                 /* Print parsed caps. */
-                if (core_prio.has_value()) {
-                    const auto cap = core_prio.value();
+                if (parsed.core_prio.has_value()) {
+                    const auto cap = parsed.core_prio.value();
                     this->PrintInteger("Lowest Thread Priority", cap.Get<CorePriority::LowestThreadPriority>());
                     this->PrintInteger("Highest Thread Priority", cap.Get<CorePriority::HighestThreadPriority>());
                     this->PrintInteger("Minimum Core Id", cap.Get<CorePriority::MinimumCoreId>());
@@ -650,7 +660,7 @@ namespace ams::hactool {
                 {
                     const char *field_name = "Allowed System Calls";
                     for (size_t i = 0; i < SystemCallCount; ++i) {
-                        if (!system_calls[i]) {
+                        if (!parsed.system_calls[i]) {
                             continue;
                         }
 
@@ -662,7 +672,7 @@ namespace ams::hactool {
                 /* Print mapped io ranges. */
                 {
                     const char *field_name = "Mapped Io Ranges";
-                    for (const auto &range : mapped_io_ranges) {
+                    for (const auto &range : parsed.mapped_io_ranges) {
                         this->PrintFormat(field_name, "(%010" PRIX64 "-%010" PRIX64 ", %s", range.GetAddress(), range.GetAddress() + range.GetSize(), range.IsReadOnly() ? "R--" : "RW-");
                         field_name = "";
                     }
@@ -671,16 +681,16 @@ namespace ams::hactool {
                 /* Print mapped normal ranges. */
                 {
                     const char *field_name = "Mapped Normal Ranges";
-                    for (const auto &range : mapped_static_ranges) {
+                    for (const auto &range : parsed.mapped_static_ranges) {
                         this->PrintFormat(field_name, "(%010" PRIX64 "-%010" PRIX64 ", %s", range.GetAddress(), range.GetAddress() + range.GetSize(), range.IsReadOnly() ? "R--" : "RW-");
                         field_name = "";
                     }
                 }
 
                 /* Print mapped regions. */
-                if (mapped_regions.has_value()) {
+                if (parsed.mapped_regions.has_value()) {
                     /* Extract regions/read only. */
-                    const auto cap = mapped_regions.value();
+                    const auto cap = parsed.mapped_regions.value();
 
                     const RegionType types[3] = { cap.Get<MapRegion::Region0>(),   cap.Get<MapRegion::Region1>(),   cap.Get<MapRegion::Region2>(), };
                     const bool          ro[3] = { cap.Get<MapRegion::ReadOnly0>(), cap.Get<MapRegion::ReadOnly1>(), cap.Get<MapRegion::ReadOnly2>(), };
@@ -715,7 +725,7 @@ namespace ams::hactool {
                 {
                     const char *field_name = "Mapped Interrupts";
                     for (size_t i = 0; i < InterruptIdCount; ++i) {
-                        if (!interrupts[i]) {
+                        if (!parsed.interrupts[i]) {
                             continue;
                         }
 
@@ -725,8 +735,8 @@ namespace ams::hactool {
                 }
 
                 /* Program Type. */
-                if (program_type.has_value()) {
-                    const auto type = program_type.value().Get<ProgramType::Type>();
+                if (parsed.program_type.has_value()) {
+                    const auto type = parsed.program_type.value().Get<ProgramType::Type>();
                     switch (type) {
                         case 0: this->PrintString("Program Type", "System Program"); break;
                         case 1: this->PrintString("Program Type", "Application");    break;
@@ -738,33 +748,32 @@ namespace ams::hactool {
                 }
 
                 /* Kernel Version. */
-                if (kernel_version.has_value()) {
-                    const u32 major = kernel_version.value().Get<KernelVersion::MajorVersion>();
-                    const u32 minor = kernel_version.value().Get<KernelVersion::MinorVersion>();
+                if (parsed.kernel_version.has_value()) {
+                    const u32 major = parsed.kernel_version.value().Get<KernelVersion::MajorVersion>();
+                    const u32 minor = parsed.kernel_version.value().Get<KernelVersion::MinorVersion>();
 
                     this->PrintFormat("Minimum Kernel Version", "%" PRIu32 ".%" PRIu32, major, minor);
                 }
 
                 /* Handle Table. */
-                if (handle_table.has_value()) {
-                    this->PrintInteger("Handle Table Size", static_cast<int>(handle_table.value().Get<HandleTable::Size>()));
+                if (parsed.handle_table.has_value()) {
+                    this->PrintInteger("Handle Table Size", static_cast<int>(parsed.handle_table.value().Get<HandleTable::Size>()));
                 }
 
                 /* Debug flags. */
-                if (debug_flags.has_value()) {
-                    this->PrintBool("Allow Debug", debug_flags.value().Get<DebugFlags::AllowDebug>());
-                    this->PrintBool("Force Debug", debug_flags.value().Get<DebugFlags::ForceDebug>());
+                if (parsed.debug_flags.has_value()) {
+                    this->PrintBool("Allow Debug", parsed.debug_flags.value().Get<DebugFlags::AllowDebug>());
+                    this->PrintBool("Force Debug", parsed.debug_flags.value().Get<DebugFlags::ForceDebug>());
                 }
 
                 /* Unknown capabilities. */
                 {
                     const char *field_name = "Unknown Capabilities";
-                    for (size_t i = 0; i < num_unknown_caps; ++i) {
-                        const auto type = GetCapabilityType(unknown_caps[i].value());
-                        this->PrintFormat(field_name, "(Type %d, Value 0x%08" PRIX32 ")", static_cast<int>(type), unknown_caps[i].value().value);
+                    for (size_t i = 0; i < parsed.num_unknown_caps; ++i) {
+                        const auto type = GetCapabilityType(parsed.unknown_caps[i].value());
+                        this->PrintFormat(field_name, "(Type %d, Value 0x%08" PRIX32 ")", static_cast<int>(type), parsed.unknown_caps[i].value().value);
                     }
                 }
-
             };
 
             if (ctx.acid_kac != nullptr && ctx.aci_kac != nullptr && ctx.acid->kac_size == ctx.aci->kac_size && std::memcmp(ctx.acid_kac, ctx.aci_kac, ctx.acid->kac_size) == 0) {
@@ -980,8 +989,379 @@ namespace ams::hactool {
 
     /* Saving. */
     void Processor::SaveAsNpdm(ProcessAsNpdmContext &ctx) {
-        /* TODO */
-        AMS_UNUSED(ctx);
+        /* If we should, save the npdm as json. */
+        if (m_options.json_out_file_path != nullptr) {
+            if (ctx.npdm == nullptr || ctx.acid == nullptr || ctx.aci == nullptr) {
+                fprintf(stderr, "[Warning]: Could not save invalid npdm to %s\n", m_options.json_out_file_path);
+                return;
+            }
+
+            /* Create the json document. */
+            rapidjson::Document d;
+            d.SetObject();
+            {
+                /* Helper for adding strings to json. */
+                auto AddFormatString = [&d] (auto &target, const char *name, const char *fmt, ...) __attribute__((format(printf, 4, 5))) {
+                    char tmp[1_KB];
+
+                    std::va_list vl;
+                    va_start(vl, fmt);
+                    const auto len = util::TVSNPrintf(tmp, sizeof(tmp), fmt, vl);
+                    va_end(vl);
+
+                    target.AddMember(rapidjson::StringRef(name), rapidjson::Value().SetString(tmp, len, d.GetAllocator()), d.GetAllocator());
+                };
+                auto AddString = [&] (auto &target, const char *name, const char *v) { AddFormatString(target, name, "%s", v);    };
+                auto AddU64    = [&] (auto &target, const char *name, u64 v) { AddFormatString(target, name, "0x%016" PRIX64, v); };
+                auto AddU32    = [&] (auto &target, const char *name, u32 v) { AddFormatString(target, name, "0x%08" PRIX32, v);  };
+                auto AddInt    = [&] (auto &target, const char *name, int v) { target.AddMember(rapidjson::StringRef(name), rapidjson::Value().SetInt(v), d.GetAllocator()); };
+                auto AddBool   = [&] (auto &target, const char *name, bool v) { target.AddMember(rapidjson::StringRef(name), rapidjson::Value().SetBool(v), d.GetAllocator()); };
+
+                /* Add the npdm's meta information. */
+                AddString(d, "name", ctx.npdm->program_name);
+                AddInt(d, "signature_key_generation", ctx.npdm->signature_key_generation);
+                AddU64(d, "program_id", ctx.aci->program_id.value);
+                AddU64(d, "program_id_range_min", ctx.acid->program_id_min.value);
+                AddU64(d, "program_id_range_max", ctx.acid->program_id_max.value);
+                AddU32(d, "main_thread_stack_size", ctx.npdm->main_thread_stack_size);
+                AddInt(d, "main_thread_priority", ctx.npdm->main_thread_priority);
+                AddInt(d, "default_cpu_id", ctx.npdm->default_cpu_id);
+                AddU32(d, "version", ctx.npdm->version);
+                AddBool(d, "is_retail", ctx.acid->flags & ldr::Acid::AcidFlag_Production);
+                AddBool(d, "unqualified_approval", ctx.acid->flags & ldr::Acid::AcidFlag_UnqualifiedApproval);
+                AddInt(d, "pool_partition", (ctx.acid->flags & ldr::Acid::AcidFlag_PoolPartitionMask) >> ldr::Acid::AcidFlag_PoolPartitionShift);
+                AddBool(d, "is_64_bit", ctx.npdm->flags & ldr::Npdm::MetaFlag_Is64Bit);
+                AddInt(d, "address_space_type", ctx.npdm->flags & (ctx.npdm->flags & ldr::Npdm::MetaFlag_AddressSpaceTypeMask) >> ldr::Npdm::MetaFlag_AddressSpaceTypeShift);
+                AddBool(d, "optimize_memory_allocation", ctx.npdm->flags & ldr::Npdm::MetaFlag_OptimizeMemoryAllocation);
+                AddBool(d, "disable_device_address_space_merge", ctx.npdm->flags & ldr::Npdm::MetaFlag_DisableDeviceAddressSpaceMerge);
+                AddU32(d, "system_resource_size", ctx.npdm->system_resource_size);
+
+                /* Add filesystem access control. */
+                {
+                    rapidjson::Value filesystem_access(rapidjson::kObjectType);
+                    {
+                        /* Get the old debug flag. */
+                        const bool is_fssrv_debug = fssrv::IsDebugFlagEnabled();
+                        ON_SCOPE_EXIT { fssrv::SetDebugFlagEnabled(is_fssrv_debug); };
+
+                        /* Create access controls. */
+                        fssrv::SetDebugFlagEnabled(true);
+                        fssrv::impl::AccessControl access_control(ctx.aci_fah, ctx.aci->fah_size, ctx.acid_fac, ctx.acid->fac_size);
+
+                        /* Add permissions. */
+                        AddU64(filesystem_access, "permissions", access_control.GetRawFlagBits());
+
+                        /* Add content owner ids. */
+                        {
+                            rapidjson::Value content_owner_ids(rapidjson::kArrayType);
+                            {
+                                s32 count;
+                                access_control.ListContentOwnerId(std::addressof(count), nullptr, 0, 0);
+                                u64 id_values[16];
+                                s32 ofs = 0;
+                                while (ofs < count) {
+                                    s32 cur_read = 0;
+                                    access_control.ListContentOwnerId(std::addressof(cur_read), id_values, ofs, static_cast<int>(util::size(id_values)));
+
+                                    for (s32 i = 0; i < cur_read; ++i) {
+                                        char tmp[0x20];
+                                        const auto len = util::TSNPrintf(tmp, sizeof(tmp), "0x%016" PRIX64, id_values[i]);
+                                        content_owner_ids.PushBack(rapidjson::Value().SetString(tmp, len, d.GetAllocator()), d.GetAllocator());
+                                    }
+
+                                    ofs += cur_read;
+                                }
+                            }
+                            filesystem_access.AddMember(rapidjson::StringRef("content_owner_ids"), content_owner_ids, d.GetAllocator());
+                        }
+
+                        /* Print save data owned ids. */
+                        {
+                            rapidjson::Value save_data_owned_ids(rapidjson::kArrayType);
+                            {
+                                s32 count;
+                                access_control.ListSaveDataOwnedId(std::addressof(count), nullptr, 0, 0);
+
+                                ncm::ApplicationId id_values[16];
+                                s32 ofs = 0;
+                                while (ofs < count) {
+                                    s32 cur_read = 0;
+                                    access_control.ListSaveDataOwnedId(std::addressof(cur_read), id_values, ofs, static_cast<int>(util::size(id_values)));
+
+                                    for (s32 i = 0; i < cur_read; ++i) {
+                                        rapidjson::Value save_data_owned(rapidjson::kObjectType);
+                                        AddInt(save_data_owned, "accessibility", access_control.GetAccessibilitySaveDataOwnedBy(id_values[i].value).value);
+                                        AddU64(save_data_owned, "id", id_values[i].value);
+
+                                        save_data_owned_ids.PushBack(save_data_owned, d.GetAllocator());
+                                    }
+
+                                    ofs += cur_read;
+                                }
+                            }
+                            filesystem_access.AddMember(rapidjson::StringRef("save_data_owner_ids"), save_data_owned_ids, d.GetAllocator());
+                        }
+                    }
+                    d.AddMember(rapidjson::StringRef("filesystem_access"), filesystem_access, d.GetAllocator());
+                }
+
+                /* Add service access control. */
+                {
+                    rapidjson::Value service_access(rapidjson::kArrayType);
+                    rapidjson::Value service_host(rapidjson::kArrayType);
+
+                    AccessControlEntry restriction(ctx.acid_sac, ctx.acid->sac_size);
+                    AccessControlEntry access_control(ctx.aci_sac, ctx.aci->sac_size);
+
+                    for (auto cur = access_control; cur.IsValid(); cur = cur.GetNextEntry()) {
+                        if (!IsAllowedAccessControl(restriction, cur.GetServiceName(), cur.IsHost(), cur.IsWildcard())) {
+                            continue;
+                        }
+
+                        char name[sizeof(sm::ServiceName) + 1] = {};
+                        cur.GetName(name);
+
+                        if (cur.IsHost()) {
+                            service_host.PushBack(rapidjson::Value().SetString(name, d.GetAllocator()), d.GetAllocator());
+                        } else {
+                            service_access.PushBack(rapidjson::Value().SetString(name, d.GetAllocator()), d.GetAllocator());
+                        }
+                    }
+
+                    d.AddMember(rapidjson::StringRef("service_access"), service_access, d.GetAllocator());
+                    d.AddMember(rapidjson::StringRef("service_host"), service_host, d.GetAllocator());
+                }
+
+                /* Add kernel capabilities. */
+                {
+                    rapidjson::Value kernel_capabilities(rapidjson::kArrayType);
+                    {
+                        /* Parse kernel capabilities. */
+                        ParsedKernelCapabilities parsed;
+                        ParseKernelCapabilities(std::addressof(parsed), static_cast<const util::BitPack32 *>(ctx.aci_kac), ctx.aci->kac_size / sizeof(util::BitPack32));
+
+                        /* Core/Priority. */
+                        if (parsed.core_prio.has_value()) {
+                            const auto cap = parsed.core_prio.value();
+
+                            rapidjson::Value k(rapidjson::kObjectType);
+                            AddString(k, "type", "kernel_flags");
+                            {
+                                rapidjson::Value v(rapidjson::kObjectType);
+                                AddInt(v, "lowest_thread_priority", cap.Get<CorePriority::LowestThreadPriority>());
+                                AddInt(v, "highest_thread_priority", cap.Get<CorePriority::HighestThreadPriority>());
+                                AddInt(v, "lowest_cpu_id", cap.Get<CorePriority::MinimumCoreId>());
+                                AddInt(v, "highest_cpu_id", cap.Get<CorePriority::MaximumCoreId>());
+                                k.AddMember(rapidjson::StringRef("value"), v, d.GetAllocator());
+                            }
+
+                            kernel_capabilities.PushBack(k, d.GetAllocator());
+                        }
+
+                        /* System calls. */
+                        {
+                            rapidjson::Value k(rapidjson::kObjectType);
+                            AddString(k, "type", "syscalls");
+
+                            {
+                                rapidjson::Value v(rapidjson::kObjectType);
+                                for (size_t i = 0; i < SystemCallCount; ++i) {
+                                    if (parsed.system_calls[i]) {
+                                        const char *name = GetSystemCallName(i);
+                                        if (std::strcmp(name, "Unknown") != 0) {
+                                            AddFormatString(v, name, "0x%02" PRIXZ, i);
+                                        } else {
+                                            char key_str[0x20];
+                                            char val_str[0x20];
+                                            util::TSNPrintf(key_str, sizeof(key_str), "Unknown%02" PRIXZ, i);
+                                            util::TSNPrintf(val_str, sizeof(val_str), "0x%02" PRIXZ, i);
+
+                                            v.AddMember(rapidjson::Value().SetString(key_str, d.GetAllocator()), rapidjson::Value().SetString(val_str, d.GetAllocator()), d.GetAllocator());
+                                        }
+                                    }
+                                }
+                                k.AddMember(rapidjson::StringRef("value"), v, d.GetAllocator());
+                            }
+
+                            kernel_capabilities.PushBack(k, d.GetAllocator());
+                        }
+
+                        /* Mappings. */
+                        {
+                            for (const auto &range : parsed.mapped_io_ranges) {
+                                rapidjson::Value k(rapidjson::kObjectType);
+                                if (range.GetSize() == os::MemoryPageSize && !range.IsReadOnly()) {
+                                    AddString(k, "type", "map_page");
+
+                                    AddU64(k, "value", range.GetAddress());
+                                } else {
+                                    AddString(k, "type", "map");
+
+                                    rapidjson::Value v(rapidjson::kObjectType);
+                                    AddU64(v, "address", range.GetAddress());
+                                    AddU64(v, "size", range.GetSize());
+                                    AddBool(v, "is_ro", range.IsReadOnly());
+                                    AddBool(v, "is_io", true);
+                                    k.AddMember(rapidjson::StringRef("value"), v, d.GetAllocator());
+                                }
+
+                                kernel_capabilities.PushBack(k, d.GetAllocator());
+                            }
+                            for (const auto &range : parsed.mapped_static_ranges) {
+                                rapidjson::Value k(rapidjson::kObjectType);
+                                AddString(k, "type", "map");
+                                {
+                                    rapidjson::Value v(rapidjson::kObjectType);
+                                    AddU64(v, "address", range.GetAddress());
+                                    AddU64(v, "size", range.GetSize());
+                                    AddBool(v, "is_ro", range.IsReadOnly());
+                                    AddBool(v, "is_io", false);
+                                    k.AddMember(rapidjson::StringRef("value"), v, d.GetAllocator());
+                                }
+
+                                kernel_capabilities.PushBack(k, d.GetAllocator());
+                            }
+                        }
+
+                        /* Mapped regions. */
+                        if (parsed.mapped_regions.has_value()) {
+                            rapidjson::Value k(rapidjson::kObjectType);
+                            AddString(k, "type", "map_region");
+                            {
+                                rapidjson::Value v(rapidjson::kArrayType);
+
+                                const auto cap = parsed.mapped_regions.value();
+                                const RegionType types[3] = { cap.Get<MapRegion::Region0>(),   cap.Get<MapRegion::Region1>(),   cap.Get<MapRegion::Region2>(), };
+                                const bool          ro[3] = { cap.Get<MapRegion::ReadOnly0>(), cap.Get<MapRegion::ReadOnly1>(), cap.Get<MapRegion::ReadOnly2>(), };
+
+                                for (size_t i = 0; i < util::size(types); ++i) {
+                                    rapidjson::Value r(rapidjson::kObjectType);
+                                    AddInt(r, "region_type", static_cast<int>(types[i]));
+                                    AddBool(r, "is_ro", ro[i]);
+                                    v.PushBack(r, d.GetAllocator());
+                                }
+
+                                k.AddMember(rapidjson::StringRef("value"), v, d.GetAllocator());
+                            }
+
+                            kernel_capabilities.PushBack(k, d.GetAllocator());
+                        }
+
+                        /* Interrupts. */
+                        {
+                            u32 irq_ids[2] = { PaddingInterruptId, PaddingInterruptId };
+
+                            auto FlushInterruptIds = [&]() {
+                                rapidjson::Value k(rapidjson::kObjectType);
+                                AddString(k, "type", "irq_pair");
+                                {
+                                    rapidjson::Value v(rapidjson::kArrayType);
+                                    for (size_t i = 0; i < util::size(irq_ids); ++i) {
+                                        if (irq_ids[i] != PaddingInterruptId) {
+                                            v.PushBack(rapidjson::Value().SetInt(irq_ids[i]), d.GetAllocator());
+                                        } else {
+                                            v.PushBack(rapidjson::Value().SetNull(), d.GetAllocator());
+                                        }
+
+                                        irq_ids[i] = PaddingInterruptId;
+                                    }
+
+                                    k.AddMember(rapidjson::StringRef("value"), v, d.GetAllocator());
+                                }
+
+                                kernel_capabilities.PushBack(k, d.GetAllocator());
+                            };
+
+                            for (size_t i = 0; i < InterruptIdCount; ++i) {
+                                if (!parsed.interrupts[i]) {
+                                    continue;
+                                }
+
+                                if (irq_ids[0] == PaddingInterruptId) {
+                                    irq_ids[0] = i;
+                                } else {
+                                    irq_ids[1] = i;
+                                    FlushInterruptIds();
+                                }
+                            }
+
+                            if (irq_ids[0] != PaddingInterruptId) {
+                                FlushInterruptIds();
+                            }
+                        }
+
+
+                        /* Program Type. */
+                        if (parsed.program_type.has_value()) {
+                            const auto cap = parsed.program_type.value();
+
+                            rapidjson::Value k(rapidjson::kObjectType);
+                            AddString(k, "type", "application_type");
+                            AddInt(k, "value", cap.Get<ProgramType::Type>());
+
+                            kernel_capabilities.PushBack(k, d.GetAllocator());
+                        }
+
+                        /* Kernel Version. */
+                        if (parsed.kernel_version.has_value()) {
+                            const auto cap = parsed.kernel_version.value();
+
+                            rapidjson::Value k(rapidjson::kObjectType);
+                            AddString(k, "type", "min_kernel_version");
+                            {
+                                const u32 major = cap.Get<KernelVersion::MajorVersion>();
+                                const u32 minor = cap.Get<KernelVersion::MinorVersion>();
+                                AddFormatString(k, "value", "0x%04" PRIX32, static_cast<u32>((major << 4) | minor));
+                            }
+
+                            kernel_capabilities.PushBack(k, d.GetAllocator());
+                        }
+
+                        /* Handle Table. */
+                        if (parsed.handle_table.has_value()) {
+                            const auto cap = parsed.handle_table.value();
+
+                            rapidjson::Value k(rapidjson::kObjectType);
+                            AddString(k, "type", "handle_table_size");
+                            AddInt(k, "value", cap.Get<HandleTable::Size>());
+
+                            kernel_capabilities.PushBack(k, d.GetAllocator());
+                        }
+
+                        /* Debug flags. */
+                        if (parsed.debug_flags.has_value()) {
+                            const auto cap = parsed.debug_flags.value();
+
+                            rapidjson::Value k(rapidjson::kObjectType);
+                            AddString(k, "type", "debug_flags");
+                            {
+                                rapidjson::Value v(rapidjson::kObjectType);
+                                AddBool(v, "allow_debug", cap.Get<DebugFlags::AllowDebug>());
+                                AddBool(v, "force_debug", cap.Get<DebugFlags::ForceDebug>());
+                                k.AddMember(rapidjson::StringRef("value"), v, d.GetAllocator());
+                            }
+
+                            kernel_capabilities.PushBack(k, d.GetAllocator());
+                        }
+
+                        /* Unknown capabilities. */
+                        if (parsed.num_unknown_caps > 0) {
+                            fprintf(stderr, "[Warning]: Was unable to convert %" PRIuZ " unknown capabilities to JSON\n", parsed.num_unknown_caps);
+                        }
+                    }
+                    d.AddMember(rapidjson::StringRef("kernel_capabilities"), kernel_capabilities, d.GetAllocator());
+                }
+            }
+
+            /* Convert json to string. */
+            rapidjson::StringBuffer str_buf;
+            rapidjson::PrettyWriter<rapidjson::StringBuffer> writer(str_buf);
+            d.Accept(writer);
+
+            /* Write the json. */
+            printf("Saving Npdm JSON to %s...\n", m_options.json_out_file_path);
+            SaveToFile(m_local_fs, m_options.json_out_file_path, str_buf.GetString(), str_buf.GetLength());
+        }
     }
 
 }

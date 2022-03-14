@@ -133,6 +133,7 @@ namespace ams::hactool {
             MakeOptionHandler("outfile", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.default_out_file_path), arg); }),
             MakeOptionHandler("plaintext", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.plaintext_out_path), arg); }),
             MakeOptionHandler("ciphertext", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.ciphertext_out_path), arg); }),
+            MakeOptionHandler("json", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.json_out_file_path), arg); }),
             MakeOptionHandler("listromfs", [] (Options &options) { options.list_romfs = true; }),
         };
 
@@ -291,13 +292,13 @@ namespace ams::hactool {
             } else if (arg[0] == '-' && arg[1] == '-') {
                 for (const auto &o : OptionHandlers) {
                     const auto o_len = std::strlen(o.name);
-                    if (arg_len < o_len || std::memcmp(arg, o.name, o_len) != 0) {
+                    if (arg_len < o_len + 2 || std::memcmp(arg + 2, o.name, o_len) != 0 || (arg[2 + o_len] != 0 && arg[2 + o_len] != '=')) {
                         continue;
                     }
 
                     if (o.takes_arg) {
-                        if (arg[o_len] == '=') {
-                            success = o.handler(options, arg + o_len + 1);
+                        if (arg[2 + o_len] == '=') {
+                            success = o.handler(options, arg + 2 + o_len + 1);
                         } else {
                             ++i;
                             success = i < argc && o.handler(options, argv[i]);

@@ -84,7 +84,7 @@ namespace ams::hactool {
             Result Process();
         private:
             /* Printing. */
-            ScopedIndentHolder IncreaseIndentation() {
+            [[nodiscard]] ScopedIndentHolder IncreaseIndentation() {
                 static constexpr const char Indentation[] = "    ";
                 const auto len = std::strlen(m_indent_buffer);
                 AMS_ABORT_UNLESS(len + sizeof(Indentation) < sizeof(m_indent_buffer));
