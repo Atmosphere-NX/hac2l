@@ -25,55 +25,56 @@ namespace ams::hactool {
         constexpr size_t RsaKeySize = crypto::Rsa2048PssSha256Verifier::ModulusSize;
 
         struct KeySet {
-            u8 secure_boot_key[AesKeySize];                                      /* Secure boot key for use in key derivation. NOTE: CONSOLE UNIQUE. */
-            u8 tsec_key[AesKeySize];                                             /* TSEC key for use in key derivation. NOTE: CONSOLE UNIQUE. */
-            u8 device_key[AesKeySize];                                           /* Device key used to derive some FS keys. NOTE: CONSOLE UNIQUE. */
-            u8 keyblob_keys[pkg1::KeyGeneration_Max][AesKeySize];                /* Actual keys used to decrypt keyblobs. NOTE: CONSOLE UNIQUE.*/
-            u8 keyblob_mac_keys[pkg1::KeyGeneration_Max][AesKeySize];            /* Keys used to validate keyblobs. NOTE: CONSOLE UNIQUE. */
-            u8 encrypted_keyblobs[pkg1::KeyGeneration_Max][0xB0];                /* Actual encrypted keyblobs (EKS). NOTE: CONSOLE UNIQUE. */
-            u8 mariko_aes_class_keys[0xC][AesKeySize];                           /* AES Class Keys set by mariko bootrom. */
-            u8 mariko_kek[AesKeySize];                                           /* Key Encryption Key for mariko. */
-            u8 mariko_bek[AesKeySize];                                           /* Boot Encryption Key for mariko. */
-            u8 keyblobs[pkg1::KeyGeneration_Max][0x90];                          /* Actual decrypted keyblobs (EKS). */
-            u8 keyblob_key_sources[pkg1::KeyGeneration_Max][AesKeySize];         /* Seeds for keyblob keys. */
-            u8 keyblob_mac_key_source[AesKeySize];                               /* Seed for keyblob MAC key derivation. */
-            u8 tsec_root_kek[AesKeySize];                                        /* Used to generate TSEC root keys. */
-            u8 package1_mac_kek[AesKeySize];                                     /* Used to generate Package1 MAC keys. */
-            u8 package1_kek[AesKeySize];                                         /* Used to generate Package1 keys. */
-            u8 tsec_auth_signatures[pkg1::KeyGeneration_Max][AesKeySize];        /* Auth signatures, seeds for tsec root key/package1 mac kek/package1 key on 6.2.0+. */
-            u8 tsec_root_keys[pkg1::KeyGeneration_Max][AesKeySize];              /* Key for master kek decryption, from TSEC firmware on 6.2.0+. */
-            u8 master_kek_sources[pkg1::KeyGeneration_Max][AesKeySize];          /* Seeds for firmware master keks. */
-            u8 mariko_master_kek_sources[pkg1::KeyGeneration_Max][AesKeySize];   /* Seeds for firmware master keks (Mariko). */
-            u8 master_keks[pkg1::KeyGeneration_Max][AesKeySize];                 /* Firmware master keks, stored in keyblob prior to 6.2.0. */
-            u8 master_key_source[AesKeySize];                                    /* Seed for master key derivation. */
-            u8 master_keys[pkg1::KeyGeneration_Max][AesKeySize];                 /* Firmware master keys. */
-            u8 package1_mac_keys[pkg1::KeyGeneration_Max][AesKeySize];           /* Package1 MAC keys. */
-            u8 package1_keys[pkg1::KeyGeneration_Max][AesKeySize];               /* Package1 keys. */
-            u8 package2_keys[pkg1::KeyGeneration_Max][AesKeySize];               /* Package2 keys. */
-            u8 package2_key_source[AesKeySize];                                  /* Seed for Package2 key. */
-            u8 per_console_key_source[AesKeySize];                               /* Seed for Device key. */
-            u8 aes_kek_generation_source[AesKeySize];                            /* Seed for GenerateAesKek, usecase + generation 0. */
-            u8 aes_key_generation_source[AesKeySize];                            /* Seed for GenerateAesKey. */
-            u8 key_area_key_application_source[AesKeySize];                      /* Seed for kaek 0. */
-            u8 key_area_key_ocean_source[AesKeySize];                            /* Seed for kaek 1. */
-            u8 key_area_key_system_source[AesKeySize];                           /* Seed for kaek 2. */
-            u8 titlekek_source[AesKeySize];                                      /* Seed for titlekeks. */
-            u8 header_kek_source[AesKeySize];                                    /* Seed for header kek. */
-            u8 sd_card_kek_source[AesKeySize];                                   /* Seed for SD card kek. */
-            u8 sd_card_nca_key_source[0x20];                                     /* Seed for SD card encryption keys. */
-            u8 sd_card_save_key_source[0x20];                                    /* Seed for SD card encryption keys. */
-            u8 save_mac_kek_source[AesKeySize];                                  /* Seed for save kek. */
-            u8 save_mac_key_source[AesKeySize];                                  /* Seed for save key. */
-            u8 header_key_source[pkg1::KeyGeneration_Max];                       /* Seed for NCA header key. */
-            u8 header_key[pkg1::KeyGeneration_Max];                              /* NCA header key. */
-            u8 titlekeks[pkg1::KeyGeneration_Max][AesKeySize];                   /* Title key encryption keys. */
-            u8 key_area_keys[pkg1::KeyGeneration_Max][3][AesKeySize];            /* Key area encryption keys. */
-            u8 xci_header_key[AesKeySize];                                       /* Key for XCI partially encrypted header. */
-            u8 save_mac_key[AesKeySize];                                         /* Key used to sign savedata. */
+            u8 secure_boot_key[AesKeySize];                                                 /* Secure boot key for use in key derivation. NOTE: CONSOLE UNIQUE. */
+            u8 tsec_key[AesKeySize];                                                        /* TSEC key for use in key derivation. NOTE: CONSOLE UNIQUE. */
+            u8 device_key[AesKeySize];                                                      /* Device key used to derive some FS keys. NOTE: CONSOLE UNIQUE. */
+            u8 keyblob_keys[pkg1::KeyGeneration_Max][AesKeySize];                           /* Actual keys used to decrypt keyblobs. NOTE: CONSOLE UNIQUE.*/
+            u8 keyblob_mac_keys[pkg1::KeyGeneration_Max][AesKeySize];                       /* Keys used to validate keyblobs. NOTE: CONSOLE UNIQUE. */
+            u8 encrypted_keyblobs[pkg1::KeyGeneration_Max][0xB0];                           /* Actual encrypted keyblobs (EKS). NOTE: CONSOLE UNIQUE. */
+            u8 mariko_aes_class_keys[0xC][AesKeySize];                                      /* AES Class Keys set by mariko bootrom. */
+            u8 mariko_kek[AesKeySize];                                                      /* Key Encryption Key for mariko. */
+            u8 mariko_bek[AesKeySize];                                                      /* Boot Encryption Key for mariko. */
+            u8 keyblobs[pkg1::KeyGeneration_Max][0x90];                                     /* Actual decrypted keyblobs (EKS). */
+            u8 keyblob_key_sources[pkg1::KeyGeneration_Max][AesKeySize];                    /* Seeds for keyblob keys. */
+            u8 keyblob_mac_key_source[AesKeySize];                                          /* Seed for keyblob MAC key derivation. */
+            u8 tsec_root_kek[AesKeySize];                                                   /* Used to generate TSEC root keys. */
+            u8 package1_mac_kek[AesKeySize];                                                /* Used to generate Package1 MAC keys. */
+            u8 package1_kek[AesKeySize];                                                    /* Used to generate Package1 keys. */
+            u8 tsec_auth_signatures[pkg1::KeyGeneration_Max][AesKeySize];                   /* Auth signatures, seeds for tsec root key/package1 mac kek/package1 key on 6.2.0+. */
+            u8 tsec_root_keys[pkg1::KeyGeneration_Max][AesKeySize];                         /* Key for master kek decryption, from TSEC firmware on 6.2.0+. */
+            u8 master_kek_sources[pkg1::KeyGeneration_Max][AesKeySize];                     /* Seeds for firmware master keks. */
+            u8 mariko_master_kek_sources[pkg1::KeyGeneration_Max][AesKeySize];              /* Seeds for firmware master keks (Mariko). */
+            u8 master_keks[pkg1::KeyGeneration_Max][AesKeySize];                            /* Firmware master keks, stored in keyblob prior to 6.2.0. */
+            u8 master_key_source[AesKeySize];                                               /* Seed for master key derivation. */
+            u8 master_keys[pkg1::KeyGeneration_Max][AesKeySize];                            /* Firmware master keys. */
+            u8 package1_mac_keys[pkg1::KeyGeneration_Max][AesKeySize];                      /* Package1 MAC keys. */
+            u8 package1_keys[pkg1::KeyGeneration_Max][AesKeySize];                          /* Package1 keys. */
+            u8 package2_keys[pkg1::KeyGeneration_Max][AesKeySize];                          /* Package2 keys. */
+            u8 package2_key_source[AesKeySize];                                             /* Seed for Package2 key. */
+            u8 per_console_key_source[AesKeySize];                                          /* Seed for Device key. */
+            u8 aes_kek_generation_source[AesKeySize];                                       /* Seed for GenerateAesKek, usecase + generation 0. */
+            u8 aes_key_generation_source[AesKeySize];                                       /* Seed for GenerateAesKey. */
+            u8 key_area_key_application_source[AesKeySize];                                 /* Seed for kaek 0. */
+            u8 key_area_key_ocean_source[AesKeySize];                                       /* Seed for kaek 1. */
+            u8 key_area_key_system_source[AesKeySize];                                      /* Seed for kaek 2. */
+            u8 titlekek_source[AesKeySize];                                                 /* Seed for titlekeks. */
+            u8 header_kek_source[AesKeySize];                                               /* Seed for header kek. */
+            u8 sd_card_kek_source[AesKeySize];                                              /* Seed for SD card kek. */
+            u8 sd_card_nca_key_source[0x20];                                                /* Seed for SD card encryption keys. */
+            u8 sd_card_save_key_source[0x20];                                               /* Seed for SD card encryption keys. */
+            u8 save_mac_kek_source[AesKeySize];                                             /* Seed for save kek. */
+            u8 save_mac_key_source[AesKeySize];                                             /* Seed for save key. */
+            u8 header_key_source[pkg1::KeyGeneration_Max];                                  /* Seed for NCA header key. */
+            u8 header_key[pkg1::KeyGeneration_Max];                                         /* NCA header key. */
+            u8 titlekeks[pkg1::KeyGeneration_Max][AesKeySize];                              /* Title key encryption keys. */
+            u8 key_area_keys[pkg1::KeyGeneration_Max][3][AesKeySize];                       /* Key area encryption keys. */
+            u8 xci_header_key[AesKeySize];                                                  /* Key for XCI partially encrypted header. */
+            u8 xci_t1_titlekey_keks[gc::impl::GcCrypto::GcTitleKeyKekIndexMax][AesKeySize]; /* Kek used to decrypt XCI T1 title keys. */
+            u8 save_mac_key[AesKeySize];                                                    /* Key used to sign savedata. */
             u8 sd_card_keys[2][pkg1::KeyGeneration_Max];
-            u8 nca_hdr_fixed_key_moduli[2][RsaKeySize];                          /* NCA header fixed key RSA pubk. */
-            u8 acid_fixed_key_moduli[2][RsaKeySize];                             /* ACID fixed key RSA pubk. */
-            u8 package2_fixed_key_modulus[RsaKeySize];                           /* Package2 Header RSA pubk. */
+            u8 nca_hdr_fixed_key_moduli[2][RsaKeySize];                                     /* NCA header fixed key RSA pubk. */
+            u8 acid_fixed_key_moduli[2][RsaKeySize];                                        /* ACID fixed key RSA pubk. */
+            u8 package2_fixed_key_modulus[RsaKeySize];                                      /* Package2 Header RSA pubk. */
         };
 
         constinit KeySet g_keyset{};
@@ -334,6 +335,10 @@ namespace ams::hactool {
                 }
             }
 
+            for (int gen = 0; gen < static_cast<int>(gc::impl::GcCrypto::GcTitleKeyKekIndexMax); ++gen) {
+                TEST_KEY_WITH_GEN(xci_t1_titlekey_kek, gen);
+            }
+
             if (!matched_key) {
                 fprintf(stderr, "[Warning]: Failed to match key \"%s\", (value \"%s\")\n", key, value);
             }
@@ -504,6 +509,9 @@ namespace ams::hactool {
         /* Set internal keys for gamecard library. */
         if (const auto res = gc::impl::EmbeddedDataHolder::SetLibraryEmbeddedKeys(m_options.dev); R_FAILED(res)) {
             fprintf(stderr, "[Warning]: Failed to preset internal keys for gamecard library (2%03d-%04d). Is master_key_04 correct?\n", res.GetModule(), res.GetDescription());
+        }
+        for (size_t i = 0; i < gc::impl::GcCrypto::GcTitleKeyKekIndexMax; ++i) {
+            gc::impl::EmbeddedDataHolder::SetLibraryTitleKeyKek(i, g_keyset.xci_t1_titlekey_keks[i], sizeof(g_keyset.xci_t1_titlekey_keks[i]));
         }
 
         /* Load titlekeys. */

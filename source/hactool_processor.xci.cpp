@@ -24,6 +24,8 @@ namespace ams::hactool {
 
         constexpr size_t CardInitialDataRegionSize = 0x1000;
 
+        constexpr size_t CardPageSize = 0x200;
+
         struct XciBodyHeader {
             gc::impl::CardHeaderWithSignature card_header;
             gc::impl::CardHeaderWithSignature card_header_for_sign2;
@@ -48,6 +50,7 @@ namespace ams::hactool {
             }
 
             /* Default to treating the xci as though it has no key area. */
+            fprintf(stderr, "[Warning]: Game card is missing key area/initial data header. Re-dump?\n");
             *out_key_area = nullptr;
             *out_body     = std::make_shared<fs::SubStorage>(storage, 0, storage_size);
             R_SUCCEED();
@@ -128,7 +131,7 @@ namespace ams::hactool {
         R_ABORT_UNLESS(gc::impl::GcCrypto::DecryptCardHeader(std::addressof(ctx->card_data.decrypted_header.data), sizeof(ctx->card_data.decrypted_header.data)));
 
         /* Set up the headers for ca10 sign2. */
-        if (ctx->card_data.header.data.flags & fs::GameCardAttribute_HasHeaderSign2Flag) {
+        if (ctx->card_data.header.data.flags & fs::GameCardAttribute_HasCa10CertificateFlag) {
             ctx->card_data.ca10_certificate          = body_header.ca10_cert;
             ctx->card_data.header_for_hash           = body_header.card_header_for_sign2;
             ctx->card_data.decrypted_header_for_hash = ctx->card_data.header_for_hash;
@@ -140,13 +143,13 @@ namespace ams::hactool {
         }
 
         /* Read the T1 cert. */
-        R_ABORT_UNLESS(ctx->body_storage->Read(0x7000, std::addressof(ctx->card_data.t1_certificate), sizeof(ctx->card_data.t1_certificate)));
+        R_ABORT_UNLESS(ctx->body_storage->Read(CardPageSize * 0x38, std::addressof(ctx->card_data.t1_certificate), sizeof(ctx->card_data.t1_certificate)));
 
         /* Parse the root partition. */
         {
             /* Create the root partition storage. */
             using AlignmentMatchingStorageForGameCard = fssystem::AlignmentMatchingStorageInBulkRead<1>;
-            auto aligned_storage = std::make_shared<AlignmentMatchingStorageForGameCard>(ctx->body_storage, 0x200);
+            auto aligned_storage = std::make_shared<AlignmentMatchingStorageForGameCard>(ctx->body_storage, CardPageSize);
 
             /* Get the size of the body. */
             s64 body_size;
@@ -222,21 +225,91 @@ namespace ams::hactool {
     void Processor::PrintAsXci(ProcessAsXciContext &ctx) {
         auto _ = this->PrintHeader("XCI");
 
-        /* TODO: Print correct data instead of the secure partition's contents. */
-        if (ctx.secure_partition.fs != nullptr) {
-            PrintDirectory(ctx.secure_partition.fs, "secure:", "/");
+        /* Print the initial data. */
+        if (ctx.key_area_storage != nullptr) {
+            auto _ = this->PrintHeader("Initial Data");
+
+            if (m_options.verify) {
+                this->PrintBytesWithVerify("Package Id", std::memcmp(ctx.card_data.initial_data.payload.package_id, ctx.card_data.decrypted_header.data.package_id, sizeof(ctx.card_data.initial_data.payload.package_id)) == 0, ctx.card_data.initial_data.payload.package_id, sizeof(ctx.card_data.initial_data.payload.package_id));
+            } else {
+                this->PrintBytes("Package Id", ctx.card_data.initial_data.payload.package_id, sizeof(ctx.card_data.initial_data.payload.package_id));
+            }
+
+            this->PrintBytes("Encrypted Title Key", ctx.card_data.initial_data.payload.auth_data, sizeof(ctx.card_data.initial_data.payload.auth_data));
+
+            const auto kek_idx = ctx.card_data.decrypted_header.data.key_index.Get<gc::impl::CardHeaderKeyIndex::TitleKeyDecIndex>();
+            u8 key[sizeof(ctx.card_data.initial_data.payload.auth_data)];
+            if (R_SUCCEEDED(gc::impl::GcCrypto::DecryptCardInitialData(key, sizeof(key), std::addressof(ctx.card_data.initial_data), sizeof(ctx.card_data.initial_data), kek_idx))) {
+                this->PrintBytes("Decrypted Title Key", key, sizeof(key));
+            } else {
+                printf("%08x\n", gc::impl::GcCrypto::DecryptCardInitialData(key, sizeof(key), std::addressof(ctx.card_data.initial_data), sizeof(ctx.card_data.initial_data), kek_idx).GetValue());
+            }
+        } else {
+            this->PrintString("Initial Data", "Missing/Not Dumped");
         }
 
-        /* TODO: Non-debug prints. */
-        if (ctx.key_area_storage != nullptr) {
-            this->PrintBytes("Initial Data", std::addressof(ctx.card_data.initial_data), sizeof(ctx.card_data.initial_data));
-        }
-        this->PrintBytes("Encrypted Header", std::addressof(ctx.card_data.header), sizeof(ctx.card_data.header));
-        this->PrintBytes("Decrypted Header", std::addressof(ctx.card_data.decrypted_header), sizeof(ctx.card_data.decrypted_header));
-        this->PrintBytes("Encrypted Header For Hash", std::addressof(ctx.card_data.header_for_hash), sizeof(ctx.card_data.header_for_hash));
-        this->PrintBytes("Decrypted Header For Hash", std::addressof(ctx.card_data.decrypted_header_for_hash), sizeof(ctx.card_data.decrypted_header_for_hash));
-        this->PrintBytes("T1 Card Cert", std::addressof(ctx.card_data.t1_certificate), sizeof(ctx.card_data.t1_certificate));
-        this->PrintBytes("CA10 Cert", std::addressof(ctx.card_data.ca10_certificate), sizeof(ctx.card_data.ca10_certificate));
+        /* Declare helper for printing a card header. */
+        auto PrintCardHeader = [&](const char *header_name, const gc::impl::CardHeaderWithSignature &header, const void *modulus) {
+            auto _ = this->PrintHeader(header_name);
+
+            /* Print the magic. */
+            this->PrintMagic(header.data.magic);
+
+            /* Print the signature. */
+            if (m_options.verify) {
+                const bool signature_valid = R_SUCCEEDED(gc::impl::GcCrypto::VerifyCardHeader(std::addressof(header), sizeof(header), modulus, crypto::Rsa2048Pkcs1Sha256Verifier::ModulusSize));
+                this->PrintBytesWithVerify("Signature", signature_valid, header.signature, sizeof(header.signature));
+            } else {
+                this->PrintBytes("Signature", header.signature, sizeof(header.signature));
+            }
+
+            this->PrintBytes("Package Id", header.data.package_id, sizeof(header.data.package_id));
+
+            this->PrintString("Memory Capacity", fs::impl::IdString().ToString(static_cast<gc::impl::MemoryCapacity>(header.data.rom_size)));
+            this->PrintHex12("Rom Area Start", static_cast<u64>(header.data.rom_area_start_page) * CardPageSize);
+            this->PrintHex12("Backup Area Start", static_cast<u64>(header.data.backup_area_start_page) * CardPageSize);
+            this->PrintHex12("Valid Data End", static_cast<u64>(header.data.valid_data_end_page) * CardPageSize);
+            this->PrintHex12("Limit Area", static_cast<u64>(header.data.lim_area_page) * CardPageSize);
+            this->PrintString("Kek Index", fs::impl::IdString().ToString(header.data.key_index.Get<gc::impl::CardHeaderKeyIndex::KekIndex>()));
+            this->PrintInteger("Title Key Dec Index", header.data.key_index.Get<gc::impl::CardHeaderKeyIndex::TitleKeyDecIndex>());
+            {
+                auto _ = this->PrintHeader("Flags");
+                this->PrintBool("Auto Boot", header.data.flags & fs::GameCardAttribute_AutoBootFlag);
+                this->PrintBool("History Erase", header.data.flags & fs::GameCardAttribute_HistoryEraseFlag);
+                this->PrintBool("Repair Tool", header.data.flags & fs::GameCardAttribute_RepairToolFlag);
+                this->PrintBool("Different Region Cup to Terra Device", header.data.flags & fs::GameCardAttribute_DifferentRegionCupToTerraDeviceFlag);
+                this->PrintBool("Different Region Cup to Global Device", header.data.flags & fs::GameCardAttribute_DifferentRegionCupToGlobalDeviceFlag);
+                this->PrintBool("Has Ca10 Certificate", header.data.flags & fs::GameCardAttribute_HasCa10CertificateFlag);
+            }
+            this->PrintString("Sel Sec", fs::impl::IdString().ToString(static_cast<gc::impl::SelSec>(header.data.sel_sec)));
+            this->PrintInteger("Sel T1 Key", header.data.sel_t1_key);
+            this->PrintInteger("Sel Key", header.data.sel_key);
+            this->PrintBytes("Initial Data Hash", header.data.initial_data_hash, sizeof(header.data.initial_data_hash));
+            this->PrintBytes("Partition Header Hash", header.data.partition_fs_header_hash, sizeof(header.data.partition_fs_header_hash));
+            this->PrintBytes("Encrypted Data Iv", header.data.iv, sizeof(header.data.iv));
+            {
+                auto _ = this->PrintHeader("Card Info");
+
+                auto &enc_data = header.data.encrypted_data;
+
+                this->PrintString("Card Fw Version", fs::impl::IdString().ToString(static_cast<gc::impl::FwVersion>(enc_data.fw_version[0])));
+                this->PrintString("Clock Rate", fs::impl::IdString().ToString(static_cast<gc::impl::AccessControl1ClockRate>(enc_data.acc_ctrl_1)));
+                this->PrintInteger("Wait1 Time Read", enc_data.wait_1_time_read);
+                this->PrintInteger("Wait2 Time Read", enc_data.wait_2_time_read);
+                this->PrintInteger("Wait1 Time Write", enc_data.wait_1_time_write);
+                this->PrintInteger("Wait2 Time Write", enc_data.wait_2_time_write);
+                this->PrintHex8("Fw Mode", enc_data.fw_mode);
+                this->PrintString("Compatibility Type", fs::impl::IdString().ToString(static_cast<fs::GameCardCompatibilityType>(enc_data.compatibility_type)));
+                this->PrintFormat("Cup Version", "%" PRIu32 ".%" PRIu32 ".%" PRIu32 ".%" PRIu32 " (%" PRIu32")", (enc_data.cup_version >> 26) & 0x3F, (enc_data.cup_version >> 20) & 0x3F, (enc_data.cup_version >> 16) & 0x3F, (enc_data.cup_version >> 0) & 0xFFFF, enc_data.cup_version);
+                this->PrintId64("Cup Id", enc_data.cup_id);
+                this->PrintBytes("Upp Hash", enc_data.upp_hash, sizeof(enc_data.upp_hash));
+            }
+        };
+
+        /* Print the main card header. */
+        PrintCardHeader("Main Header", ctx.card_data.decrypted_header, nullptr);
+
+        /* TODO: Print partitions. */
 
         AMS_UNUSED(ctx);
     }
