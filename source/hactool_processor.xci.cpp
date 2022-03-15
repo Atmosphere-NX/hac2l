@@ -249,7 +249,7 @@ namespace ams::hactool {
         }
 
         /* Declare helper for printing a card header. */
-        auto PrintCardHeader = [&](const char *header_name, const gc::impl::CardHeaderWithSignature &header, const void *modulus) {
+        auto PrintCardHeader = [&](const char *header_name, const gc::impl::CardHeaderWithSignature &header, const gc::impl::CardHeaderWithSignature &enc_header, const void *modulus) {
             auto _ = this->PrintHeader(header_name);
 
             /* Print the magic. */
@@ -257,7 +257,7 @@ namespace ams::hactool {
 
             /* Print the signature. */
             if (m_options.verify) {
-                const bool signature_valid = R_SUCCEEDED(gc::impl::GcCrypto::VerifyCardHeader(std::addressof(header), sizeof(header), modulus, crypto::Rsa2048Pkcs1Sha256Verifier::ModulusSize));
+                const bool signature_valid = R_SUCCEEDED(gc::impl::GcCrypto::VerifyCardHeader(std::addressof(enc_header), sizeof(enc_header), modulus, crypto::Rsa2048Pkcs1Sha256Verifier::ModulusSize));
                 this->PrintBytesWithVerify("Signature", signature_valid, header.signature, sizeof(header.signature));
             } else {
                 this->PrintBytes("Signature", header.signature, sizeof(header.signature));
@@ -284,8 +284,33 @@ namespace ams::hactool {
             this->PrintString("Sel Sec", fs::impl::IdString().ToString(static_cast<gc::impl::SelSec>(header.data.sel_sec)));
             this->PrintInteger("Sel T1 Key", header.data.sel_t1_key);
             this->PrintInteger("Sel Key", header.data.sel_key);
-            this->PrintBytes("Initial Data Hash", header.data.initial_data_hash, sizeof(header.data.initial_data_hash));
-            this->PrintBytes("Partition Header Hash", header.data.partition_fs_header_hash, sizeof(header.data.partition_fs_header_hash));
+            if (m_options.verify) {
+                u8 hash[crypto::Sha256Generator::HashSize];
+
+                crypto::GenerateSha256(hash, sizeof(hash), std::addressof(ctx.card_data.initial_data), sizeof(ctx.card_data.initial_data));
+                const bool initial_data_hash_good = ctx.key_area_storage != nullptr && crypto::IsSameBytes(hash, header.data.initial_data_hash, sizeof(hash));
+                this->PrintBytesWithVerify("Initial Data Hash", initial_data_hash_good, header.data.initial_data_hash, sizeof(header.data.initial_data_hash));
+
+                {
+                    void *tmp = std::malloc(header.data.partition_fs_header_size + 1);
+                    AMS_ABORT_UNLESS(tmp != nullptr);
+                    ON_SCOPE_EXIT { std::free(tmp); };
+
+                    R_ABORT_UNLESS(ctx.body_storage->Read(header.data.partition_fs_header_address, tmp, header.data.partition_fs_header_size));
+                    if (static_cast<fs::GameCardCompatibilityType>(header.data.encrypted_data.compatibility_type) != fs::GameCardCompatibilityType::Normal) {
+                        static_cast<u8 *>(tmp)[header.data.partition_fs_header_size] = header.data.encrypted_data.compatibility_type;
+                        crypto::GenerateSha256(hash, sizeof(hash), tmp, header.data.partition_fs_header_size + 1);
+                    } else {
+                        crypto::GenerateSha256(hash, sizeof(hash), tmp, header.data.partition_fs_header_size);
+                    }
+                }
+
+                const bool partition_header_hash_good = crypto::IsSameBytes(hash, header.data.partition_fs_header_hash, sizeof(hash));
+                this->PrintBytesWithVerify("Partition Header Hash", partition_header_hash_good, header.data.partition_fs_header_hash, sizeof(header.data.partition_fs_header_hash));
+            } else {
+                this->PrintBytes("Initial Data Hash", header.data.initial_data_hash, sizeof(header.data.initial_data_hash));
+                this->PrintBytes("Partition Header Hash", header.data.partition_fs_header_hash, sizeof(header.data.partition_fs_header_hash));
+            }
             this->PrintBytes("Encrypted Data Iv", header.data.iv, sizeof(header.data.iv));
             {
                 auto _ = this->PrintHeader("Card Info");
@@ -307,16 +332,39 @@ namespace ams::hactool {
         };
 
         /* Print the main card header. */
-        PrintCardHeader("Main Header", ctx.card_data.decrypted_header, nullptr);
+        PrintCardHeader("Main Header", ctx.card_data.decrypted_header, ctx.card_data.header, nullptr);
 
-        /* TODO: Print partitions. */
+        auto PrintGamecardPartition = [&](const char *header, const char *prefix, ProcessAsXciContext::PartitionData &part) {
+            if (part.fs != nullptr) {
+                auto _ = this->PrintHeader(header);
+
+                char print_prefix[0x100];
+                std::memset(print_prefix, ' ', WidthToPrintFieldValue);
+                util::TSNPrintf(print_prefix + WidthToPrintFieldValue, sizeof(print_prefix) - WidthToPrintFieldValue, "%s", prefix);
+                PrintDirectory(part.fs, print_prefix, "/");
+            }
+        };
+
+        PrintGamecardPartition("Root Partition", "root:", ctx.root_partition);
+        PrintGamecardPartition("Logo Partition", "logo:", ctx.logo_partition);
+        PrintGamecardPartition("Normal Partition", "normal:", ctx.normal_partition);
+        PrintGamecardPartition("Secure Partition", "secure:", ctx.secure_partition);
+        if (m_options.list_update) {
+            PrintGamecardPartition("Update Partition", "update:", ctx.update_partition);
+        }
 
         AMS_UNUSED(ctx);
     }
 
     void Processor::SaveAsXci(ProcessAsXciContext &ctx) {
-        /* TODO */
-        AMS_UNUSED(ctx);
+        /* Extract partitions. */
+        if (m_options.root_partition_out_dir != nullptr) { ExtractDirectoryWithProgress(m_local_fs, ctx.root_partition.fs, "root:", m_options.root_partition_out_dir, "/"); }
+        if (m_options.logo_partition_out_dir != nullptr) { ExtractDirectoryWithProgress(m_local_fs, ctx.logo_partition.fs, "logo:", m_options.logo_partition_out_dir, "/"); }
+        if (m_options.normal_partition_out_dir != nullptr) { ExtractDirectoryWithProgress(m_local_fs, ctx.normal_partition.fs, "normal:", m_options.normal_partition_out_dir, "/"); }
+        if (m_options.secure_partition_out_dir != nullptr) { ExtractDirectoryWithProgress(m_local_fs, ctx.secure_partition.fs, "secure:", m_options.secure_partition_out_dir, "/"); }
+        if (m_options.update_partition_out_dir != nullptr) { ExtractDirectoryWithProgress(m_local_fs, ctx.update_partition.fs, "update:", m_options.update_partition_out_dir, "/"); }
+
+        /* TODO: Recurse, dump NCAs? */
     }
 
 }

@@ -172,6 +172,102 @@ namespace ams::hactool {
         R_RETURN(res);
     }
 
+    Result ExtractDirectoryWithProgress(std::shared_ptr<fs::fsa::IFileSystem> &dst_fs, std::shared_ptr<fs::fsa::IFileSystem> &src_fs, const char *prefix, const char *dst_path, const char *src_path) {
+        /* Allocate a work buffer. */
+        void *buffer = std::malloc(WorkBufferSize);
+        if (buffer == nullptr) {
+            fprintf(stderr, "[Warning]: Failed to allocate work buffer to extract %s%s to %s!\n", prefix, src_path, dst_path);
+            R_SUCCEED();
+        }
+        ON_SCOPE_EXIT { std::free(buffer); };
+
+        auto extract_impl = [&] () -> Result {
+            /* Set up the destination work path to point at the target directory. */
+            fs::Path dst_fs_path;
+            R_TRY(dst_fs_path.SetShallowBuffer(dst_path));
+
+            /* Try to create the destination directory. */
+            dst_fs->CreateDirectory(dst_fs_path);
+
+            /* Verify that we can open the directory on the base filesystem. */
+            {
+                std::unique_ptr<fs::fsa::IDirectory> sub_dir;
+                R_TRY(dst_fs->OpenDirectory(std::addressof(sub_dir), dst_fs_path, fs::OpenDirectoryMode_Directory));
+            }
+
+            /* Create/Initialize subdirectory filesystem. */
+            fssystem::SubDirectoryFileSystem subdir_fs{dst_fs};
+            R_TRY(subdir_fs.Initialize(dst_fs_path));
+
+            /* Set up the source path to point at the target directory. */
+            fs::Path src_fs_path;
+            R_TRY(src_fs_path.SetShallowBuffer(src_path));
+
+            /* Iterate, copying files. */
+            R_RETURN(fssystem::IterateDirectoryRecursively(src_fs.get(), src_fs_path,
+                [&](const fs::Path &path, const fs::DirectoryEntry &) -> Result { /* On Enter Directory */
+                    /* Create the directory. */
+                    R_TRY_CATCH(subdir_fs.CreateDirectory(path)) {
+                        R_CATCH(fs::ResultPathAlreadyExists) { /* ... */ }
+                    } R_END_TRY_CATCH;
+
+                    R_SUCCEED();
+                },
+                [&](const fs::Path &, const fs::DirectoryEntry &) -> Result { /* On Exit Directory */
+                    R_SUCCEED();
+                },
+                [&](const fs::Path &path, const fs::DirectoryEntry &) -> Result { /* On File */
+                    /* Delete a file, if one already exists. */
+                    subdir_fs.DeleteFile(path);
+
+                    /* Open the existing file. */
+                    std::shared_ptr<fs::IStorage> storage;
+                    R_TRY(OpenFileStorage(std::addressof(storage), src_fs, path.GetString()));
+
+                    /* Get the file size. */
+                    s64 size;
+                    R_TRY(storage->GetSize(std::addressof(size)));
+
+                    /* Create the file. */
+                    R_TRY(subdir_fs.CreateFile(path, size));
+
+                    /* Open the file. */
+                    std::unique_ptr<fs::fsa::IFile> base_file;
+                    R_TRY(subdir_fs.OpenFile(std::addressof(base_file), path, fs::OpenMode_ReadWrite));
+
+                    /* Set the file size. */
+                    R_TRY(base_file->SetSize(size));
+
+                    /* Create a progress printer. */
+                    char prog_prefix[1_KB];
+                    util::TSNPrintf(prog_prefix, sizeof(prog_prefix), "Saving %s%s... ", prefix, path.GetString());
+                    ProgressPrinter<40> printer{prog_prefix, static_cast<size_t>(size)};
+
+                    /* Write. */
+                    s64 offset = 0;
+                    const s64 end_offset = static_cast<s64>(offset + size);
+                    while (offset < end_offset) {
+                        const s64 cur_write_size = std::min<s64>(WorkBufferSize, end_offset - offset);
+
+                        R_TRY(storage->Read(offset, buffer, cur_write_size));
+                        R_TRY(base_file->Write(offset, buffer, cur_write_size, fs::WriteOption::None));
+
+                        offset += cur_write_size;
+                        printer.Update(static_cast<size_t>(offset));
+                    }
+
+                    R_SUCCEED();
+                }
+            ));
+        };
+
+        const auto res = extract_impl();
+        if (R_FAILED(res)) {
+            fprintf(stderr, "[Warning]: Failed to extract %s%s to %s: 2%03d-%04d\n", prefix, src_path, dst_path, res.GetModule(), res.GetDescription());
+        }
+        R_RETURN(res);
+    }
+
     Result SaveToFile(std::shared_ptr<fs::fsa::IFileSystem> &fs, const char *path, fs::IStorage *storage, s64 offset, size_t size) {
         /* Allocate a work buffer. */
         void *buffer = std::malloc(WorkBufferSize);

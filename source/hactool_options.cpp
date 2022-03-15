@@ -142,7 +142,13 @@ namespace ams::hactool {
             MakeOptionHandler("plaintext", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.plaintext_out_path), arg); }),
             MakeOptionHandler("ciphertext", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.ciphertext_out_path), arg); }),
             MakeOptionHandler("json", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.json_out_file_path), arg); }),
+            MakeOptionHandler("rootdir", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.root_partition_out_dir), arg); }),
+            MakeOptionHandler("securedir", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.secure_partition_out_dir), arg); }),
+            MakeOptionHandler("normaldir", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.normal_partition_out_dir), arg); }),
+            MakeOptionHandler("updatedir", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.update_partition_out_dir), arg); }),
+            MakeOptionHandler("logodir", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.logo_partition_out_dir), arg); }),
             MakeOptionHandler("listromfs", [] (Options &options) { options.list_romfs = true; }),
+            MakeOptionHandler("listupdate", [] (Options &options) { options.list_update = true; }),
         };
 
     }

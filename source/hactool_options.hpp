@@ -58,7 +58,13 @@ namespace ams::hactool {
         const char *ciphertext_out_path = nullptr;
         const char *uncompressed_out_path = nullptr;
         const char *json_out_file_path = nullptr;
+        const char *root_partition_out_dir = nullptr;
+        const char *update_partition_out_dir = nullptr;
+        const char *normal_partition_out_dir = nullptr;
+        const char *logo_partition_out_dir = nullptr;
+        const char *secure_partition_out_dir = nullptr;
         bool list_romfs = false;
+        bool list_update = false;
         /* TODO: More things. */
     };
 
