@@ -16,6 +16,7 @@
 #pragma once
 #include <stratosphere.hpp>
 #include "hactool_options.hpp"
+#include "hactool_application_list.hpp"
 
 namespace ams::hactool {
 
@@ -74,6 +75,16 @@ namespace ams::hactool {
                 ProcessAsNpdmContext npdm_ctx;
             };
 
+            struct ProcessAsApplicationFileSystemCtx {
+                std::shared_ptr<fs::fsa::IFileSystem> fs;
+
+                struct ApplicationEntryData {
+                    std::shared_ptr<fs::IStorage> storage;
+                };
+
+                ApplicationContentsHolder<ApplicationEntryData> apps;
+            };
+
             struct ProcessAsXciContext {
                 std::shared_ptr<fs::IStorage> storage;
 
@@ -102,6 +113,8 @@ namespace ams::hactool {
                 PartitionData logo_partition;
                 PartitionData normal_partition;
                 PartitionData secure_partition;
+
+                ProcessAsApplicationFileSystemCtx app_ctx;
             };
         private:
             Options m_options;
@@ -193,16 +206,19 @@ namespace ams::hactool {
             Result ProcessAsNca(std::shared_ptr<fs::IStorage> storage, ProcessAsNcaContext *ctx = nullptr);
             Result ProcessAsNpdm(std::shared_ptr<fs::IStorage> storage, ProcessAsNpdmContext *ctx = nullptr);
             Result ProcessAsXci(std::shared_ptr<fs::IStorage> storage, ProcessAsXciContext *ctx = nullptr);
+            Result ProcessAsApplicationFileSystem(std::shared_ptr<fs::fsa::IFileSystem> fs, ProcessAsApplicationFileSystemCtx *ctx = nullptr);
 
             /* Printing. */
             void PrintAsNca(ProcessAsNcaContext &ctx);
             void PrintAsNpdm(ProcessAsNpdmContext &ctx);
             void PrintAsXci(ProcessAsXciContext &ctx);
+            void PrintAsApplicationFileSystem(ProcessAsApplicationFileSystemCtx &ctx);
 
             /* Saving. */
             void SaveAsNca(ProcessAsNcaContext &ctx);
             void SaveAsNpdm(ProcessAsNpdmContext &ctx);
             void SaveAsXci(ProcessAsXciContext &ctx);
+            void SaveAsApplicationFileSystem(ProcessAsApplicationFileSystemCtx &ctx);
     };
 
     inline void Processor::PrintLineImpl(const char *fmt, ...) const {

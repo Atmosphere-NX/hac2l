@@ -30,6 +30,7 @@ namespace ams::hactool {
         Kip,
         Ini,
         Npdm,
+        AppFs,
     };
 
     struct Options {
@@ -41,6 +42,9 @@ namespace ams::hactool {
         bool dev = false;
         bool enable_hash = false;
         bool disable_key_warns = false;
+        int preferred_app_index = -1;
+        int preferred_program_index = -1;
+        int preferred_version = -1;
         const char *key_file_path = nullptr;
         const char *titlekey_path = nullptr;
         const char *consolekey_path = nullptr;

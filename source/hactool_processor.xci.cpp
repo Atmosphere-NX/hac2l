@@ -207,7 +207,12 @@ namespace ams::hactool {
             }
         }
 
-        /* TODO: Recursive processing? */
+        /* If we have applications, process them. */
+        if (ctx->secure_partition.fs != nullptr) {
+            if (const auto process_app_res = this->ProcessAsApplicationFileSystem(ctx->secure_partition.fs, std::addressof(ctx->app_ctx)); R_FAILED(process_app_res)) {
+                fprintf(stderr, "[Warning]: Failed to process game card's applications: 2%03d-%04d\n", process_app_res.GetModule(), process_app_res.GetDescription());
+            }
+        }
 
         /* Print. */
         if (ctx == std::addressof(local_ctx)) {
@@ -351,6 +356,25 @@ namespace ams::hactool {
         PrintGamecardPartition("Secure Partition", "secure:", ctx.secure_partition);
         if (m_options.list_update) {
             PrintGamecardPartition("Update Partition", "update:", ctx.update_partition);
+        }
+
+        if (ctx.secure_partition.fs != nullptr) {
+            s32 app_idx = -1;
+            ncm::ApplicationId cur_app_id{};
+            const char *field_name = "Programs";
+            for (const auto &entry : ctx.app_ctx.apps) {
+                if (entry.GetType() != ncm::ContentType::Program) {
+                    continue;
+                }
+
+                if (app_idx == -1 || cur_app_id != entry.GetId()) {
+                    ++app_idx;
+                    cur_app_id = entry.GetId();
+                }
+
+                this->PrintFormat(field_name, "{ Idx=%d, ProgramId=%016" PRIX64 ", Version=0x%08" PRIX32 ", IdOffset=%02" PRIX32 " }", app_idx, entry.GetId().value, entry.GetVersion(), entry.GetIdOffset());
+                field_name = "";
+            }
         }
 
         AMS_UNUSED(ctx);

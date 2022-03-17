@@ -63,6 +63,14 @@ namespace ams::hactool {
 
     }
 
+    bool PathView::HasPrefix(util::string_view prefix) const {
+        return m_path.compare(0, prefix.length(), prefix) == 0;
+    }
+
+    bool PathView::HasSuffix(util::string_view suffix) const {
+        return m_path.compare(m_path.length() - suffix.length(), suffix.length(), suffix) == 0;
+    }
+
     Result OpenFileStorage(std::shared_ptr<fs::IStorage> *out, std::shared_ptr<fs::fsa::IFileSystem> &fs, const char *path) {
         /* Open the file storage. */
         std::shared_ptr<ams::fs::FileStorageBasedFileSystem> file_storage = fssystem::AllocateShared<ams::fs::FileStorageBasedFileSystem>();
@@ -78,6 +86,30 @@ namespace ams::hactool {
 
         /* Set the output. */
         *out = std::move(file_storage);
+        R_SUCCEED();
+    }
+
+    Result OpenSubDirectoryFileSystem(std::shared_ptr<fs::fsa::IFileSystem> *out, std::shared_ptr<fs::fsa::IFileSystem> &fs, const char *path) {
+        /* Get the fs path. */
+        ams::fs::Path fs_path;
+        R_UNLESS(path != nullptr, fs::ResultNullptrArgument());
+        R_TRY(fs_path.SetShallowBuffer(path));
+
+        /* Verify that we can open the directory on the base filesystem. */
+        {
+            std::unique_ptr<fs::fsa::IDirectory> sub_dir;
+            R_TRY(fs->OpenDirectory(std::addressof(sub_dir), fs_path, fs::OpenDirectoryMode_Directory));
+        }
+
+        /* Allocate the subdirectory filesystem. */
+        auto subdir_fs = fssystem::AllocateShared<fssystem::SubDirectoryFileSystem>(fs);
+        R_UNLESS(subdir_fs != nullptr, fs::ResultAllocationMemoryFailedAllocateShared());
+
+        /* Initialize the subdirectory filesystem. */
+        R_TRY(subdir_fs->Initialize(fs_path));
+
+        /* Set the output. */
+        *out = std::move(subdir_fs);
         R_SUCCEED();
     }
 

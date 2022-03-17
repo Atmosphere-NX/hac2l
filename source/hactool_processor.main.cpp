@@ -33,24 +33,34 @@ namespace ams::hactool {
         /* Setup our internal keys. */
         this->PresetInternalKeys();
 
-        /* Open the file storage. */
-        std::shared_ptr<fs::IStorage> input = nullptr;
-        if (m_options.in_file_path != nullptr) {
-            R_TRY(OpenFileStorage(std::addressof(input), m_local_fs, m_options.in_file_path));
-        }
+        if (m_options.file_type == FileType::AppFs) {
+            /* Open the filesystem. */
+            std::shared_ptr<fs::fsa::IFileSystem> input = nullptr;
+            if (m_options.in_file_path != nullptr) {
+                R_TRY(OpenSubDirectoryFileSystem(std::addressof(input), m_local_fs, m_options.in_file_path));
+            }
 
-        /* Process for the specific file type. */
-        switch (m_options.file_type) {
-            case FileType::Nca:
-                R_TRY(this->ProcessAsNca(std::move(input)));
-                break;
-            case FileType::Npdm:
-                R_TRY(this->ProcessAsNpdm(std::move(input)));
-                break;
-            case FileType::Xci:
-                R_TRY(this->ProcessAsXci(std::move(input)));
-                break;
-            AMS_UNREACHABLE_DEFAULT_CASE();
+            R_TRY(this->ProcessAsApplicationFileSystem(std::move(input)));
+        } else {
+            /* Open the file storage. */
+            std::shared_ptr<fs::IStorage> input = nullptr;
+            if (m_options.in_file_path != nullptr) {
+                R_TRY(OpenFileStorage(std::addressof(input), m_local_fs, m_options.in_file_path));
+            }
+
+            /* Process for the specific file type. */
+            switch (m_options.file_type) {
+                case FileType::Nca:
+                    R_TRY(this->ProcessAsNca(std::move(input)));
+                    break;
+                case FileType::Npdm:
+                    R_TRY(this->ProcessAsNpdm(std::move(input)));
+                    break;
+                case FileType::Xci:
+                    R_TRY(this->ProcessAsXci(std::move(input)));
+                    break;
+                AMS_UNREACHABLE_DEFAULT_CASE();
+            }
         }
 
         R_SUCCEED();

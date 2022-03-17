@@ -110,6 +110,8 @@ namespace ams::hactool {
                     options.file_type = FileType::Nca;
                 } else if (std::strcmp(arg, "xci") == 0) {
                     options.file_type = FileType::Xci;
+                } else if (std::strcmp(arg, "appfs") == 0) {
+                    options.file_type = FileType::AppFs;
                 } else {
                     return false;
                 }

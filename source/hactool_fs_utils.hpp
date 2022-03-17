@@ -18,7 +18,18 @@
 
 namespace ams::hactool {
 
+   class PathView {
+        private:
+            util::string_view m_path;
+        public:
+            PathView(util::string_view p) : m_path(p) { /* ...*/ }
+            bool HasPrefix(util::string_view prefix) const;
+            bool HasSuffix(util::string_view suffix) const;
+    };
+
     Result OpenFileStorage(std::shared_ptr<fs::IStorage> *out, std::shared_ptr<fs::fsa::IFileSystem> &fs, const char *path);
+
+    Result OpenSubDirectoryFileSystem(std::shared_ptr<fs::fsa::IFileSystem> *out, std::shared_ptr<fs::fsa::IFileSystem> &fs, const char *path);
 
     Result PrintDirectory(std::shared_ptr<fs::fsa::IFileSystem> &fs, const char *prefix, const char *path);
 
