@@ -75,7 +75,7 @@ namespace ams::hactool {
                 ProcessAsNpdmContext npdm_ctx;
             };
 
-            struct ProcessAsApplicationFileSystemCtx {
+            struct ProcessAsApplicationFileSystemContext {
                 std::shared_ptr<fs::fsa::IFileSystem> fs;
 
                 struct ApplicationEntryData {
@@ -114,7 +114,17 @@ namespace ams::hactool {
                 PartitionData normal_partition;
                 PartitionData secure_partition;
 
-                ProcessAsApplicationFileSystemCtx app_ctx;
+                ProcessAsApplicationFileSystemContext app_ctx;
+            };
+
+            struct ProcessAsPfsContext {
+                std::shared_ptr<fs::IStorage> storage;
+                std::shared_ptr<fs::fsa::IFileSystem> fs;
+
+                bool is_exefs;
+
+                ProcessAsNpdmContext npdm_ctx;
+                ProcessAsApplicationFileSystemContext app_ctx;
             };
         private:
             Options m_options;
@@ -206,19 +216,22 @@ namespace ams::hactool {
             Result ProcessAsNca(std::shared_ptr<fs::IStorage> storage, ProcessAsNcaContext *ctx = nullptr);
             Result ProcessAsNpdm(std::shared_ptr<fs::IStorage> storage, ProcessAsNpdmContext *ctx = nullptr);
             Result ProcessAsXci(std::shared_ptr<fs::IStorage> storage, ProcessAsXciContext *ctx = nullptr);
-            Result ProcessAsApplicationFileSystem(std::shared_ptr<fs::fsa::IFileSystem> fs, ProcessAsApplicationFileSystemCtx *ctx = nullptr);
+            Result ProcessAsPfs(std::shared_ptr<fs::IStorage> storage, ProcessAsPfsContext *ctx = nullptr);
+            Result ProcessAsApplicationFileSystem(std::shared_ptr<fs::fsa::IFileSystem> fs, ProcessAsApplicationFileSystemContext *ctx = nullptr);
 
             /* Printing. */
             void PrintAsNca(ProcessAsNcaContext &ctx);
             void PrintAsNpdm(ProcessAsNpdmContext &ctx);
             void PrintAsXci(ProcessAsXciContext &ctx);
-            void PrintAsApplicationFileSystem(ProcessAsApplicationFileSystemCtx &ctx);
+            void PrintAsPfs(ProcessAsPfsContext &ctx);
+            void PrintAsApplicationFileSystem(ProcessAsApplicationFileSystemContext &ctx);
 
             /* Saving. */
             void SaveAsNca(ProcessAsNcaContext &ctx);
             void SaveAsNpdm(ProcessAsNpdmContext &ctx);
             void SaveAsXci(ProcessAsXciContext &ctx);
-            void SaveAsApplicationFileSystem(ProcessAsApplicationFileSystemCtx &ctx);
+            void SaveAsPfs(ProcessAsPfsContext &ctx);
+            void SaveAsApplicationFileSystem(ProcessAsApplicationFileSystemContext &ctx);
     };
 
     inline void Processor::PrintLineImpl(const char *fmt, ...) const {

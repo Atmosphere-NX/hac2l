@@ -28,6 +28,109 @@ namespace ams::hactool {
 
         constexpr const char ContentMetaFileNameExtension[] = ".cnmt";
 
+        constexpr const char TicketFileNameExtension[] = ".tik";
+
+        struct alignas(4) CommonTicketData {
+            u32 signature_type;
+            u8 signature_data[0x100];
+            u8 padding0[0x3C];
+            char issuer[0x40];
+            u8 title_key_block[0x100];
+            u8 format_version;
+            u8 titlekey_type;
+            u16 ticket_version;
+            u8 license_type;
+            u8 key_generation;
+            u16 property_mask;
+            u8 reserved[8];
+            u8 ticket_id[8];
+            u8 device_id[8];
+            u8 rights_id[0x10];
+            u8 account_id[0x4];
+            u32 total_section_size;
+            u32 section_header_offset;
+            u16 section_header_count;
+            u16 section_header_entry_size;
+        };
+        static_assert(util::is_pod<CommonTicketData>::value);
+        static_assert(sizeof(CommonTicketData) == 0x2C0);
+
+        bool IsValidCommonTicketFormat(const void *data, size_t size) {
+            /* Check that the data is the right size for a ticket. */
+            if (size != sizeof(CommonTicketData)) {
+                return false;
+            }
+
+            /* Check the ticket. */
+            const auto &ticket = *static_cast<const CommonTicketData *>(data);
+
+            /* Check that the ticket is an aes key. */
+            if (ticket.titlekey_type != 0) {
+                return false;
+            }
+
+            /* Check that the ticket's rights id isn't all-zero. */
+            size_t i;
+            for (i = 0; i < util::size(ticket.rights_id); ++i) {
+                if (ticket.rights_id[i] != 0) {
+                    break;
+                }
+            }
+
+            if (i == util::size(ticket.rights_id)) {
+                return false;
+            }
+
+            /* Check that the ticket is a proper aes-key. */
+            for (i = 0; i < sizeof(spl::AesKey); ++i) {
+                if (ticket.title_key_block[i] != 0) {
+                    break;
+                }
+            }
+            if (i == sizeof(spl::AesKey)) {
+                return false;
+            }
+
+            for (i = sizeof(spl::AesKey); i < util::size(ticket.title_key_block); ++i) {
+                if (ticket.title_key_block[i] != 0) {
+                    break;
+                }
+            }
+            if (i != util::size(ticket.title_key_block)) {
+                return false;
+            }
+
+            /* Check that the ticket's section header is proper. */
+            if (ticket.section_header_offset != sizeof(CommonTicketData)) {
+                return false;
+            }
+
+            /* Ticket is good enough. */
+            return true;
+        }
+
+        bool TryLoadKeyFromCommonTicket(fssrv::impl::ExternalKeyManager &km, const void *data, size_t size) {
+            if (IsValidCommonTicketFormat(data, size)) {
+                /* Get the ticket. */
+                const auto &ticket = *static_cast<const CommonTicketData *>(data);
+
+                /* Decode the rights id. */
+                fs::RightsId rights_id = {};
+                std::memcpy(std::addressof(rights_id), ticket.rights_id, sizeof(rights_id));
+
+                /* Decode the key. */
+                spl::AccessKey access_key = {};
+                std::memcpy(std::addressof(access_key), ticket.title_key_block, sizeof(access_key));
+
+                /* Register with the key manager. */
+                km.Register(rights_id, access_key);
+
+                return true;
+            } else {
+                return false;
+            }
+        }
+
         Result ReadContentMetaFile(std::unique_ptr<u8[]> *out, size_t *out_size, std::shared_ptr<fs::fsa::IFileSystem> &fs) {
             bool found = false;
             R_RETURN(fssystem::IterateDirectoryRecursively(fs.get(),
@@ -69,9 +172,9 @@ namespace ams::hactool {
 
     }
 
-    Result Processor::ProcessAsApplicationFileSystem(std::shared_ptr<fs::fsa::IFileSystem> fs, ProcessAsApplicationFileSystemCtx *ctx) {
+    Result Processor::ProcessAsApplicationFileSystem(std::shared_ptr<fs::fsa::IFileSystem> fs, ProcessAsApplicationFileSystemContext *ctx) {
         /* Ensure we have a context. */
-        ProcessAsApplicationFileSystemCtx local_ctx{};
+        ProcessAsApplicationFileSystemContext local_ctx{};
         if (ctx == nullptr) {
             ctx = std::addressof(local_ctx);
         }
@@ -86,6 +189,33 @@ namespace ams::hactool {
                 [&] (const fs::Path &, const fs::DirectoryEntry &) -> Result { R_SUCCEED(); },
                 [&] (const fs::Path &, const fs::DirectoryEntry &) -> Result { R_SUCCEED(); },
                 [&] (const fs::Path &path, const fs::DirectoryEntry &entry) -> Result {
+                    /* If the path is a ticket, try to load it. */
+                    if (PathView(entry.name).HasSuffix(TicketFileNameExtension)) {
+                        std::shared_ptr<fs::IStorage> tik_storage;
+                        if (const auto res = OpenFileStorage(std::addressof(tik_storage), ctx->fs, path.GetString()); R_SUCCEEDED(res)) {
+                            /* Get ticket size. */
+                            s64 tik_size = -1;
+                            if (const auto res = tik_storage->GetSize(std::addressof(tik_size)); R_SUCCEEDED(res)) {
+                                if (tik_size >= static_cast<s64>(sizeof(CommonTicketData))) {
+                                    CommonTicketData tik_data;
+                                    if (const auto res = tik_storage->Read(0, std::addressof(tik_data), sizeof(tik_data)); R_SUCCEEDED(res)) {
+                                        if (!TryLoadKeyFromCommonTicket(m_external_nca_key_manager, std::addressof(tik_data), sizeof(tik_data))) {
+                                            fprintf(stderr, "[Warning]: Failed to load common title key from ticket file (%s). Is it not a common ticket?\n", path.GetString());
+                                        }
+                                    } else {
+                                        fprintf(stderr, "[Warning]: Failed to read ticket file (%s): 2%03d-%04d\n", path.GetString(), res.GetModule(), res.GetDescription());
+                                    }
+                                } else {
+                                    fprintf(stderr, "[Warning]: Ticket file (%s) has incorrect size: 2%03d-%04d\n", path.GetString(), res.GetModule(), res.GetDescription());
+                                }
+                            } else {
+                                fprintf(stderr, "[Warning]: Failed to get size of ticket file (%s): 2%03d-%04d\n", path.GetString(), res.GetModule(), res.GetDescription());
+                            }
+                        } else {
+                            fprintf(stderr, "[Warning]: Failed to open ticket file (%s): 2%03d-%04d\n", path.GetString(), res.GetModule(), res.GetDescription());
+                        }
+                    }
+
                     /* If the path isn't a meta nca, finish. */
                     R_SUCCEED_IF(!PathView(entry.name).HasSuffix(MetaNcaFileNameExtension));
 
@@ -200,7 +330,7 @@ namespace ams::hactool {
         R_SUCCEED();
     }
 
-    void Processor::PrintAsApplicationFileSystem(ProcessAsApplicationFileSystemCtx &ctx) {
+    void Processor::PrintAsApplicationFileSystem(ProcessAsApplicationFileSystemContext &ctx) {
         auto _ = this->PrintHeader("Application File System");
 
         {
@@ -226,7 +356,7 @@ namespace ams::hactool {
         AMS_UNUSED(ctx);
     }
 
-    void Processor::SaveAsApplicationFileSystem(ProcessAsApplicationFileSystemCtx &ctx) {
+    void Processor::SaveAsApplicationFileSystem(ProcessAsApplicationFileSystemContext &ctx) {
         /* TODO */
         AMS_UNUSED(ctx);
     }

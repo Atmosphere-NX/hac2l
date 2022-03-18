@@ -112,6 +112,8 @@ namespace ams::hactool {
                     options.file_type = FileType::Xci;
                 } else if (std::strcmp(arg, "appfs") == 0) {
                     options.file_type = FileType::AppFs;
+                } else if (std::strcmp(arg, "pfs") == 0 || std::strcmp(arg, "pfs0") == 0 || std::strcmp(arg, "nsp") == 0) {
+                    options.file_type = FileType::Pfs;
                 } else {
                     return false;
                 }

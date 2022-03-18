@@ -59,6 +59,9 @@ namespace ams::hactool {
                 case FileType::Xci:
                     R_TRY(this->ProcessAsXci(std::move(input)));
                     break;
+                case FileType::Pfs:
+                    R_TRY(this->ProcessAsPfs(std::move(input)));
+                    break;
                 AMS_UNREACHABLE_DEFAULT_CASE();
             }
         }
