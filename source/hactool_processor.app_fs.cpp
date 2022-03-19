@@ -26,8 +26,6 @@ namespace ams::hactool {
         constexpr const char MetaNcaFileNameExtension[] = ".cnmt.nca";
         constexpr const char NcaFileNameExtension[] = ".nca";
 
-        constexpr const char ContentMetaFileNameExtension[] = ".cnmt";
-
         constexpr const char TicketFileNameExtension[] = ".tik";
 
         struct alignas(4) CommonTicketData {
@@ -141,7 +139,7 @@ namespace ams::hactool {
                     R_SUCCEED_IF(found);
 
                     /* If the path isn't a meta nca, finish. */
-                    R_SUCCEED_IF(!PathView(entry.name).HasSuffix(ContentMetaFileNameExtension));
+                    R_SUCCEED_IF(!ncm::IsContentMetaFileName(entry.name));
 
                     /* Open the file storage. */
                     std::shared_ptr<fs::IStorage> storage;
