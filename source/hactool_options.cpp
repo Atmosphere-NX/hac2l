@@ -63,6 +63,17 @@ namespace ams::hactool {
             return true;
         }
 
+        bool ParseIntegerArgument(int *out, const char *argument) {
+            char *parse_end = nullptr;
+            const auto val = std::strtol(argument, std::addressof(parse_end), 0);
+            if (parse_end != nullptr && parse_end != argument) {
+                *out = val;
+                return true;
+            } else {
+                return false;
+            }
+        }
+
         using OptionHandlerFunction = util::IFunction<bool(Options &, const char *)>;
 
         struct OptionHandler {
@@ -153,6 +164,9 @@ namespace ams::hactool {
             MakeOptionHandler("logodir", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.logo_partition_out_dir), arg); }),
             MakeOptionHandler("listromfs", [] (Options &options) { options.list_romfs = true; }),
             MakeOptionHandler("listupdate", [] (Options &options) { options.list_update = true; }),
+            MakeOptionHandler("appindex", [] (Options &options, const char *arg) { return ParseIntegerArgument(std::addressof(options.preferred_app_index), arg); }),
+            MakeOptionHandler("programindex", [] (Options &options, const char *arg) { return ParseIntegerArgument(std::addressof(options.preferred_program_index), arg); }),
+            MakeOptionHandler("appversion", [] (Options &options, const char *arg) { return ParseIntegerArgument(std::addressof(options.preferred_version), arg); }),
         };
 
     }

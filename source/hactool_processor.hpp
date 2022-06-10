@@ -83,7 +83,11 @@ namespace ams::hactool {
                 };
 
                 ApplicationContentsHolder<ApplicationEntryData> apps;
-                ApplicationContentsHolder<ApplicationEntryData> patches;
+
+                bool has_target;
+                ncm::ApplicationId target_app_id;
+                u32 target_version;
+                u8 target_index;
             };
 
             struct ProcessAsXciContext {

@@ -25,9 +25,10 @@ namespace ams::hactool {
             u32 m_version;
             u8 m_id_offset;
             ncm::ContentType m_type;
+            ncm::ContentMetaType m_meta_type;
             UserData m_data;
         public:
-            ApplicationContentTreeEntry(ncm::ApplicationId id, u32 v, u8 o, ncm::ContentType t) : m_id(id), m_version(v), m_id_offset(o), m_type(t), m_data() {
+            ApplicationContentTreeEntry(ncm::ApplicationId id, u32 v, u8 o, ncm::ContentType t, ncm::ContentMetaType m) : m_id(id), m_version(v), m_id_offset(o), m_type(t), m_meta_type(m), m_data() {
                 /* ... */
             }
 
@@ -47,6 +48,10 @@ namespace ams::hactool {
                 return m_type;
             }
 
+            ncm::ContentMetaType GetMetaType() const {
+                return m_meta_type;
+            }
+
             const UserData &GetData() const { return m_data; }
 
             UserData &GetData() { return m_data; }
@@ -59,13 +64,15 @@ namespace ams::hactool {
             const auto a_v = a.GetVersion();
             const auto a_o = a.GetIdOffset();
             const auto a_t = a.GetType();
+            const auto a_m = a.GetMetaType();
             const auto b_i = b.GetId();
             const auto b_v = b.GetVersion();
             const auto b_o = b.GetIdOffset();
             const auto b_t = b.GetType();
-            if (std::tie(a_i, a_v, a_o, a_t) < std::tie(b_i, b_v, b_o, b_t)) {
+            const auto b_m = b.GetMetaType();
+            if (std::tie(a_i, a_v, a_o, a_t, a_m) < std::tie(b_i, b_v, b_o, b_t, b_m)) {
                 return -1;
-            } else if (std::tie(a_i, a_v, a_o, a_t) > std::tie(b_i, b_v, b_o, b_t)) {
+            } else if (std::tie(a_i, a_v, a_o, a_t, a_m) > std::tie(b_i, b_v, b_o, b_t, b_m)) {
                 return 1;
             } else {
                 return 0;
@@ -96,8 +103,8 @@ namespace ams::hactool {
                 }
             }
 
-            ApplicationContentTreeEntry<T> *Insert(ncm::ApplicationId id, u32 v, u8 o, ncm::ContentType t) {
-                auto *entry = new ApplicationContentTreeEntry<T>(id, v, o, t);
+            ApplicationContentTreeEntry<T> *Insert(ncm::ApplicationId id, u32 v, u8 o, ncm::ContentType t, ncm::ContentMetaType m) {
+                auto *entry = new ApplicationContentTreeEntry<T>(id, v, o, t, m);
                 m_tree.insert(*entry);
                 return entry;
             }
@@ -105,8 +112,8 @@ namespace ams::hactool {
             auto begin() const { return m_tree.begin(); }
             auto end() const { return m_tree.end(); }
 
-            auto Find(ncm::ApplicationId id, u32 v, u8 o, ncm::ContentType t) {
-                ApplicationContentTreeEntry<T> dummy(id, v, o, t);
+            auto Find(ncm::ApplicationId id, u32 v, u8 o, ncm::ContentType t, ncm::ContentMetaType m) {
+                ApplicationContentTreeEntry<T> dummy(id, v, o, t, m);
                 return m_tree.find(dummy);
             }
     };

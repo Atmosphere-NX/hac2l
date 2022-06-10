@@ -372,20 +372,12 @@ namespace ams::hactool {
                     cur_app_id = entry.GetId();
                 }
 
-                this->PrintFormat(field_name, "{ Idx=%d, ProgramId=%016" PRIX64 ", Version=0x%08" PRIX32 ", IdOffset=%02" PRIX32 " }", app_idx, entry.GetId().value, entry.GetVersion(), entry.GetIdOffset());
+                this->PrintFormat(field_name, "{ Idx=%d, ProgramId=%016" PRIX64 ", Version=0x%08" PRIX32 ", IdOffset=%02" PRIX32 ", MetaType=%s }", app_idx, entry.GetId().value, entry.GetVersion(), entry.GetIdOffset(), entry.GetMetaType() == ncm::ContentMetaType::Patch ? "Patch" : "App");
                 field_name = "";
             }
 
-            if (ctx.app_ctx.patches.begin() != ctx.app_ctx.patches.end()) {
-                field_name = "Patches";
-                for (const auto &entry : ctx.app_ctx.patches) {
-                    if (entry.GetType() != ncm::ContentType::Program) {
-                        continue;
-                    }
-
-                    this->PrintFormat(field_name, "{ ProgramId=%016" PRIX64 ", Version=0x%08" PRIX32 ", IdOffset=%02" PRIX32 " }", entry.GetId().value, entry.GetVersion(), entry.GetIdOffset());
-                    field_name = "";
-                }
+            if (ctx.app_ctx.has_target) {
+                this->PrintFormat("Target", "{ ProgramId=%016" PRIX64 ", Version=0x%08" PRIX32 ", IdOffset=%02" PRIX32 " }", ctx.app_ctx.target_app_id.value, ctx.app_ctx.target_version, ctx.app_ctx.target_index);
             }
         }
 

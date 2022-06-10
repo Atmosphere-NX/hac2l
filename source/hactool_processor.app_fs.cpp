@@ -264,9 +264,6 @@ namespace ams::hactool {
                     /* Get the version. */
                     const auto version = meta_header->version;
 
-                    /* We'll want to insert into the appropriate tracking holder. */
-                    auto &target = meta_header->type == ncm::ContentMetaType::Patch ? ctx->patches : ctx->apps;
-
                     /* Add all the content metas. */
                     for (size_t i = 0; i < meta_reader.GetContentCount(); ++i) {
                         const auto &info = *meta_reader.GetContentInfo(i);
@@ -277,8 +274,8 @@ namespace ams::hactool {
                         }
 
                         /* Check that we don't already have an info for the content. */
-                        if (auto existing = target.Find(*app_id, version, info.GetIdOffset(), info.GetType()); existing != target.end()) {
-                            fprintf(stderr, "[Warning]: Ignoring duplicate entry { %016" PRIX64 ", %" PRIu32 ", %d, %d }\n", app_id->value, version, static_cast<int>(info.GetIdOffset()), static_cast<int>(info.GetType()));
+                        if (auto existing = ctx->apps.Find(*app_id, version, info.GetIdOffset(), info.GetType(), meta_header->type); existing != ctx->apps.end()) {
+                            fprintf(stderr, "[Warning]: Ignoring duplicate entry { %016" PRIX64 ", %" PRIu32 ", %d, %d, %s }\n", app_id->value, version, static_cast<int>(info.GetIdOffset()), static_cast<int>(info.GetType()), meta_header->type == ncm::ContentMetaType::Patch ? "Patch" : "App");
                             continue;
                         }
 
@@ -304,7 +301,7 @@ namespace ams::hactool {
                         }
 
                         /* Add the new version for the content. */
-                        auto *entry = target.Insert(*app_id, version, info.GetIdOffset(), info.GetType());
+                        auto *entry = ctx->apps.Insert(*app_id, version, info.GetIdOffset(), info.GetType(), meta_header->type);
                         entry->GetData().storage = std::move(storage);
                     }
 
@@ -313,6 +310,59 @@ namespace ams::hactool {
             );
             if (R_FAILED(iter_result)) {
                 fprintf(stderr, "[Warning]: Failed to parse application filesystem: 2%03d-%04d\n", iter_result.GetModule(), iter_result.GetDescription());
+            }
+        }
+
+        /* Determine the target. */
+        {
+            /* Start with no target. */
+            ctx->has_target = false;
+
+            s32 app_idx  = m_options.preferred_app_index;
+            s32 prog_idx = m_options.preferred_program_index;
+            s32 version  = m_options.preferred_version;
+
+            /* Determine the application id. */
+            if (app_idx < 0) {
+                app_idx = 0;
+            }
+            {
+                s32 cur_app_idx = -1;
+                ncm::ApplicationId cur_app_id{};
+                for (const auto &entry : ctx->apps) {
+                    if (entry.GetType() != ncm::ContentType::Program) {
+                        continue;
+                    }
+
+                    if (cur_app_idx == -1 || cur_app_id != entry.GetId()) {
+                        ++cur_app_idx;
+                        cur_app_id = entry.GetId();
+                    }
+
+                    if (app_idx == cur_app_idx) {
+                        ctx->target_app_id = entry.GetId();
+                        if (prog_idx < 0) {
+                            prog_idx = entry.GetIdOffset();
+                        }
+                        break;
+                    }
+                }
+            }
+
+            /* Find a matching version. */
+            if (ctx->target_app_id != ncm::ApplicationId{}) {
+                for (const auto &entry : ctx->apps) {
+                    /* We only care about matching program entries. */
+                    if (entry.GetType() != ncm::ContentType::Program || entry.GetId() != ctx->target_app_id || entry.GetIdOffset() != prog_idx) {
+                        continue;
+                    }
+
+                    if ((version < 0 && entry.GetVersion() >= ctx->target_version) || (version >= 0 && static_cast<u32>(version) == entry.GetVersion())) {
+                        ctx->has_target     = true;
+                        ctx->target_version = entry.GetVersion();
+                        ctx->target_index   = entry.GetIdOffset();
+                    }
+                }
             }
         }
 
@@ -348,20 +398,12 @@ namespace ams::hactool {
                     cur_app_id = entry.GetId();
                 }
 
-                this->PrintFormat(field_name, "{ Idx=%d, ProgramId=%016" PRIX64 ", Version=0x%08" PRIX32 ", IdOffset=%02" PRIX32 " }", app_idx, entry.GetId().value, entry.GetVersion(), entry.GetIdOffset());
+                this->PrintFormat(field_name, "{ Idx=%d, ProgramId=%016" PRIX64 ", Version=0x%08" PRIX32 ", IdOffset=%02" PRIX32 ", MetaType=%s }", app_idx, entry.GetId().value, entry.GetVersion(), entry.GetIdOffset(), entry.GetMetaType() == ncm::ContentMetaType::Patch ? "Patch" : "App");
                 field_name = "";
             }
 
-            if (ctx.patches.begin() != ctx.patches.end()) {
-                field_name = "Patches";
-                for (const auto &entry : ctx.patches) {
-                    if (entry.GetType() != ncm::ContentType::Program) {
-                        continue;
-                    }
-
-                    this->PrintFormat(field_name, "{ ProgramId=%016" PRIX64 ", Version=0x%08" PRIX32 ", IdOffset=%02" PRIX32 " }", entry.GetId().value, entry.GetVersion(), entry.GetIdOffset());
-                    field_name = "";
-                }
+            if (ctx.has_target) {
+                this->PrintFormat("Target", "{ ProgramId=%016" PRIX64 ", Version=0x%08" PRIX32 ", IdOffset=%02" PRIX32 " }", ctx.target_app_id.value, ctx.target_version, ctx.target_index);
             }
         }
 
