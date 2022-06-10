@@ -83,6 +83,7 @@ namespace ams::hactool {
                 };
 
                 ApplicationContentsHolder<ApplicationEntryData> apps;
+                ApplicationContentsHolder<ApplicationEntryData> patches;
             };
 
             struct ProcessAsXciContext {

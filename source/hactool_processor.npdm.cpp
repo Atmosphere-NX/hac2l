@@ -603,6 +603,7 @@ namespace ams::hactool {
             this->PrintMagic(ctx.acid->magic);
 
             this->PrintHex("Version", ctx.acid->version);
+            this->PrintHex("Unknown 209", ctx.acid->unknown_209);
 
             this->PrintHex("Sign Key Generation", ctx.npdm->signature_key_generation);
 

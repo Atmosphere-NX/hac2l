@@ -106,7 +106,7 @@ namespace ams::hactool {
 
             /* Set output reader. */
             *out = std::move(nca_reader);
-            return ResultSuccess();
+            R_SUCCEED();
         }
 
     }
@@ -191,7 +191,7 @@ namespace ams::hactool {
                             break;
                     }
                 } else {
-                    fprintf(stderr, "[Warning]: Failed to open NCA section %d: 2%03d-%04d, NCA may be corrupt.\n", i, res.GetModule(), res.GetDescription());
+                    fprintf(stderr, "[Warning]: Failed to open NCA section %d: 2%03d-%04d, NCA may be corrupt.\n", i, real_res.GetModule(), real_res.GetDescription());
                 }
             } else if (fs::ResultPartitionNotFound::Includes(res)) {
                 ctx->has_sections[i] = false;

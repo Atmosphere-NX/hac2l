@@ -375,6 +375,18 @@ namespace ams::hactool {
                 this->PrintFormat(field_name, "{ Idx=%d, ProgramId=%016" PRIX64 ", Version=0x%08" PRIX32 ", IdOffset=%02" PRIX32 " }", app_idx, entry.GetId().value, entry.GetVersion(), entry.GetIdOffset());
                 field_name = "";
             }
+
+            if (ctx.app_ctx.patches.begin() != ctx.app_ctx.patches.end()) {
+                field_name = "Patches";
+                for (const auto &entry : ctx.app_ctx.patches) {
+                    if (entry.GetType() != ncm::ContentType::Program) {
+                        continue;
+                    }
+
+                    this->PrintFormat(field_name, "{ ProgramId=%016" PRIX64 ", Version=0x%08" PRIX32 ", IdOffset=%02" PRIX32 " }", entry.GetId().value, entry.GetVersion(), entry.GetIdOffset());
+                    field_name = "";
+                }
+            }
         }
 
         AMS_UNUSED(ctx);

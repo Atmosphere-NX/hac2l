@@ -264,6 +264,9 @@ namespace ams::hactool {
                     /* Get the version. */
                     const auto version = meta_header->version;
 
+                    /* We'll want to insert into the appropriate tracking holder. */
+                    auto &target = meta_header->type == ncm::ContentMetaType::Patch ? ctx->patches : ctx->apps;
+
                     /* Add all the content metas. */
                     for (size_t i = 0; i < meta_reader.GetContentCount(); ++i) {
                         const auto &info = *meta_reader.GetContentInfo(i);
@@ -274,7 +277,7 @@ namespace ams::hactool {
                         }
 
                         /* Check that we don't already have an info for the content. */
-                        if (auto existing = ctx->apps.Find(*app_id, version, info.GetIdOffset(), info.GetType()); existing != ctx->apps.end()) {
+                        if (auto existing = target.Find(*app_id, version, info.GetIdOffset(), info.GetType()); existing != target.end()) {
                             fprintf(stderr, "[Warning]: Ignoring duplicate entry { %016" PRIX64 ", %" PRIu32 ", %d, %d }\n", app_id->value, version, static_cast<int>(info.GetIdOffset()), static_cast<int>(info.GetType()));
                             continue;
                         }
@@ -301,7 +304,7 @@ namespace ams::hactool {
                         }
 
                         /* Add the new version for the content. */
-                        auto *entry = ctx->apps.Insert(*app_id, version, info.GetIdOffset(), info.GetType());
+                        auto *entry = target.Insert(*app_id, version, info.GetIdOffset(), info.GetType());
                         entry->GetData().storage = std::move(storage);
                     }
 
@@ -347,6 +350,18 @@ namespace ams::hactool {
 
                 this->PrintFormat(field_name, "{ Idx=%d, ProgramId=%016" PRIX64 ", Version=0x%08" PRIX32 ", IdOffset=%02" PRIX32 " }", app_idx, entry.GetId().value, entry.GetVersion(), entry.GetIdOffset());
                 field_name = "";
+            }
+
+            if (ctx.patches.begin() != ctx.patches.end()) {
+                field_name = "Patches";
+                for (const auto &entry : ctx.patches) {
+                    if (entry.GetType() != ncm::ContentType::Program) {
+                        continue;
+                    }
+
+                    this->PrintFormat(field_name, "{ ProgramId=%016" PRIX64 ", Version=0x%08" PRIX32 ", IdOffset=%02" PRIX32 " }", entry.GetId().value, entry.GetVersion(), entry.GetIdOffset());
+                    field_name = "";
+                }
             }
         }
 
