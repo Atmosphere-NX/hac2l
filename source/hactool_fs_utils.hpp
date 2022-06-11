@@ -33,8 +33,12 @@ namespace ams::hactool {
 
     Result PrintDirectory(std::shared_ptr<fs::fsa::IFileSystem> &fs, const char *prefix, const char *path);
 
+    Result PrintUpdatedRomFsDirectory(fssystem::RomFsFileSystem *fs, std::shared_ptr<fssystem::IndirectStorage> &indirect, std::shared_ptr<fssystem::AesCtrCounterExtendedStorage> &aes_ctr_ex, s32 min_gen, const char *prefix, const char *path);
+
     Result ExtractDirectory(std::shared_ptr<fs::fsa::IFileSystem> &dst_fs, std::shared_ptr<fs::fsa::IFileSystem> &src_fs, const char *prefix, const char *dst_path, const char *src_path);
     Result ExtractDirectoryWithProgress(std::shared_ptr<fs::fsa::IFileSystem> &dst_fs, std::shared_ptr<fs::fsa::IFileSystem> &src_fs, const char *prefix, const char *dst_path, const char *src_path);
+
+    Result ExtractUpdatedRomFsDirectory(std::shared_ptr<fs::fsa::IFileSystem> &dst_fs, fssystem::RomFsFileSystem *src_fs, std::shared_ptr<fssystem::IndirectStorage> &indirect, std::shared_ptr<fssystem::AesCtrCounterExtendedStorage> &aes_ctr_ex, s32 min_gen, const char *prefix, const char *dst_path, const char *src_path);
 
     Result SaveToFile(std::shared_ptr<fs::fsa::IFileSystem> &fs, const char *path, fs::IStorage *storage, s64 offset, size_t size);
     Result SaveToFile(std::shared_ptr<fs::fsa::IFileSystem> &fs, const char *path, fs::IStorage *storage);

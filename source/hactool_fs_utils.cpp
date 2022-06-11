@@ -140,6 +140,106 @@ namespace ams::hactool {
         R_RETURN(iter_result);
     }
 
+    Result PrintUpdatedRomFsDirectory(fssystem::RomFsFileSystem *fs, std::shared_ptr<fssystem::IndirectStorage> &indirect, std::shared_ptr<fssystem::AesCtrCounterExtendedStorage> &aes_ctr_ex, s32 min_gen, const char *prefix, const char *path) {
+        /* Get the fs path. */
+        ams::fs::Path fs_path;
+        R_UNLESS(path != nullptr, fs::ResultNullptrArgument());
+        R_TRY(fs_path.SetShallowBuffer(path));
+
+        /* Allocate a work buffer. */
+        constexpr size_t EntryBufferSize = 2_MB;
+        void *buffer = std::malloc(EntryBufferSize);
+        if (buffer == nullptr) {
+            fprintf(stderr, "[Warning]: Failed to allocate work buffer to print updated romfs directory (%s%s)!\n", prefix, path);
+            R_SUCCEED();
+        }
+        ON_SCOPE_EXIT { std::free(buffer); };
+
+        /* Set up entry buffers. */
+        auto *indirect_entries = reinterpret_cast<fssystem::IndirectStorage::Entry *>(reinterpret_cast<uintptr_t>(buffer) + 0);
+        const auto max_indirect_entries = (EntryBufferSize / 2) / sizeof(*indirect_entries);
+
+        auto *aes_ctr_ex_entries = reinterpret_cast<fssystem::AesCtrCounterExtendedStorage::Entry *>(reinterpret_cast<uintptr_t>(buffer) + (EntryBufferSize / 2));
+        const auto max_aes_ctr_ex_entries = (EntryBufferSize / 2) / sizeof(*aes_ctr_ex_entries);
+
+        /* Iterate, printing the contents of the directory. */
+        const auto iter_result = fssystem::IterateDirectoryRecursively(fs,
+            fs_path,
+            [&] (const fs::Path &, const fs::DirectoryEntry &) -> Result {
+                R_SUCCEED();
+            },
+            [&] (const fs::Path &, const fs::DirectoryEntry &) -> Result {
+                R_SUCCEED();
+            },
+            [&] (const fs::Path &path, const fs::DirectoryEntry &ent) -> Result {
+                /* Get the file base offset. */
+                s64 file_offset = 0;
+                R_TRY(fs->GetFileBaseOffset(std::addressof(file_offset), path));
+
+                /* We'll want to get the maximum generation that the file was updated in. */
+                s32 max_gen = 0;
+                bool was_updated = false;
+
+                /* Get the indirect entries. */
+                s32 indirect_count = 0;
+                R_TRY(indirect->GetEntryList(indirect_entries, std::addressof(indirect_count), max_indirect_entries, file_offset, ent.file_size));
+
+                /* Check all indirect entries. */
+                s64 offset_in_file = 0;
+                for (auto i = 0; i < indirect_count; ++i) {
+                    /* Get the current entry. */
+                    const auto &indirect_entry = indirect_entries[i];
+
+                    /* Determine the current entry size, which we'll advance by after this iteration. */
+                    size_t cur_size = ent.file_size - offset_in_file;
+                    if (i + 1 < indirect_count) {
+                        cur_size = std::min<size_t>(indirect_entries[i + 1].GetVirtualOffset() - std::max<s64>(file_offset, indirect_entry.GetVirtualOffset()), cur_size);
+                    }
+                    ON_SCOPE_EXIT { offset_in_file += cur_size; };
+
+                    /* We should have non-zero in this entry. */
+                    AMS_ABORT_UNLESS(cur_size > 0);
+
+                    /* If the entry is from the base storage, skip it. */
+                    if (indirect_entry.storage_index == 0) {
+                        continue;
+                    }
+
+                    /* The file has been updated at least once. */
+                    was_updated = true;
+
+                    /* Now, let's find the generation it was updated in. */
+                    {
+                        /* Get the aes ctr ex entries. */
+                        s32 aes_ctr_ex_count = 0;
+                        R_TRY(aes_ctr_ex->GetEntryList(aes_ctr_ex_entries, std::addressof(aes_ctr_ex_count), max_aes_ctr_ex_entries, indirect_entry.GetPhysicalOffset(), cur_size));
+
+                        /* Check all aes ctr ex entries. */
+                        for (auto j = 0; j < aes_ctr_ex_count; ++j) {
+                            /* Get the current entry. */
+                            const auto &aes_ctr_ex_entry = aes_ctr_ex_entries[j];
+
+                            /* Check the entry's generation. */
+                            max_gen = std::max(max_gen, aes_ctr_ex_entry.generation);
+                        }
+                    }
+                }
+
+                /* If we should, print. */
+                if (was_updated && max_gen >= min_gen) {
+                    printf("[%02d] %s%s\n", max_gen, prefix, path.GetString());
+                }
+
+                R_SUCCEED();
+            }
+        );
+        if (R_FAILED(iter_result)) {
+            fprintf(stderr, "[Warning]: Failed to print updated romfs directory (%s): 2%03d-%04d\n", path, iter_result.GetModule(), iter_result.GetDescription());
+        }
+
+        R_RETURN(iter_result);
+    }
+
     Result ExtractDirectory(std::shared_ptr<fs::fsa::IFileSystem> &dst_fs, std::shared_ptr<fs::fsa::IFileSystem> &src_fs, const char *prefix, const char *dst_path, const char *src_path) {
         /* Allocate a work buffer. */
         void *buffer = std::malloc(WorkBufferSize);
@@ -286,6 +386,147 @@ namespace ams::hactool {
 
                         offset += cur_write_size;
                         printer.Update(static_cast<size_t>(offset));
+                    }
+
+                    R_SUCCEED();
+                }
+            ));
+        };
+
+        const auto res = extract_impl();
+        if (R_FAILED(res)) {
+            fprintf(stderr, "[Warning]: Failed to extract %s%s to %s: 2%03d-%04d\n", prefix, src_path, dst_path, res.GetModule(), res.GetDescription());
+        }
+        R_RETURN(res);
+    }
+
+    Result ExtractUpdatedRomFsDirectory(std::shared_ptr<fs::fsa::IFileSystem> &dst_fs, fssystem::RomFsFileSystem *src_fs, std::shared_ptr<fssystem::IndirectStorage> &indirect, std::shared_ptr<fssystem::AesCtrCounterExtendedStorage> &aes_ctr_ex, s32 min_gen, const char *prefix, const char *dst_path, const char *src_path) {
+        /* Allocate a work buffer. */
+        void *buffer = std::malloc(WorkBufferSize);
+        if (buffer == nullptr) {
+            fprintf(stderr, "[Warning]: Failed to allocate work buffer to extract %s%s to %s!\n", prefix, src_path, dst_path);
+            R_SUCCEED();
+        }
+        ON_SCOPE_EXIT { std::free(buffer); };
+
+        /* Allocate a work buffer. */
+        constexpr size_t EntryBufferSize = 2_MB;
+        void *entry_buffer = std::malloc(EntryBufferSize);
+        if (entry_buffer == nullptr) {
+            fprintf(stderr, "[Warning]: Failed to allocate work buffer to extract updated romfs directory %s%s to %s!\n", prefix, src_path, dst_path);
+            R_SUCCEED();
+        }
+        ON_SCOPE_EXIT { std::free(entry_buffer); };
+
+        /* Set up entry buffers. */
+        auto *indirect_entries = reinterpret_cast<fssystem::IndirectStorage::Entry *>(reinterpret_cast<uintptr_t>(entry_buffer) + 0);
+        const auto max_indirect_entries = (EntryBufferSize / 2) / sizeof(*indirect_entries);
+
+        auto *aes_ctr_ex_entries = reinterpret_cast<fssystem::AesCtrCounterExtendedStorage::Entry *>(reinterpret_cast<uintptr_t>(entry_buffer) + (EntryBufferSize / 2));
+        const auto max_aes_ctr_ex_entries = (EntryBufferSize / 2) / sizeof(*aes_ctr_ex_entries);
+
+        auto extract_impl = [&] () -> Result {
+            /* Set up the destination work path to point at the target directory. */
+            fs::Path dst_fs_path;
+            R_TRY(dst_fs_path.SetShallowBuffer(dst_path));
+
+            /* Try to create the destination directory. */
+            dst_fs->CreateDirectory(dst_fs_path);
+
+            /* Verify that we can open the directory on the base filesystem. */
+            {
+                std::unique_ptr<fs::fsa::IDirectory> sub_dir;
+                R_TRY(dst_fs->OpenDirectory(std::addressof(sub_dir), dst_fs_path, fs::OpenDirectoryMode_Directory));
+            }
+
+            /* Create/Initialize subdirectory filesystem. */
+            fssystem::SubDirectoryFileSystem subdir_fs{dst_fs};
+            R_TRY(subdir_fs.Initialize(dst_fs_path));
+
+            /* Set up the source path to point at the target directory. */
+            fs::Path src_fs_path;
+            R_TRY(src_fs_path.SetShallowBuffer(src_path));
+
+            /* Iterate, copying files. */
+            R_RETURN(fssystem::IterateDirectoryRecursively(src_fs, src_fs_path,
+                [&](const fs::Path &path, const fs::DirectoryEntry &) -> Result { /* On Enter Directory */
+                    /* Create the directory. */
+                    R_TRY_CATCH(subdir_fs.CreateDirectory(path)) {
+                        R_CATCH(fs::ResultPathAlreadyExists) { /* ... */ }
+                    } R_END_TRY_CATCH;
+
+                    R_SUCCEED();
+                },
+                [&](const fs::Path &path, const fs::DirectoryEntry &) -> Result { /* On Exit Directory */
+                    /* If the directory has no files, we need to delete it. */
+                    R_TRY_CATCH(subdir_fs.DeleteDirectory(path)) {
+                        R_CATCH(fs::ResultDirectoryNotEmpty) { /* ... */ }
+                    } R_END_TRY_CATCH;
+
+                    R_SUCCEED();
+                },
+                [&](const fs::Path &path, const fs::DirectoryEntry &ent) -> Result { /* On File */
+                    /* Delete a file, if one already exists. */
+                    subdir_fs.DeleteFile(path);
+
+                    /* We'll want to get the maximum generation that the file was updated in. */
+                    s32 max_gen = 0;
+                    bool was_updated = false;
+                    {
+                        /* Get the file base offset. */
+                        s64 file_offset = 0;
+                        R_TRY(src_fs->GetFileBaseOffset(std::addressof(file_offset), path));
+
+                        /* Get the indirect entries. */
+                        s32 indirect_count = 0;
+                        R_TRY(indirect->GetEntryList(indirect_entries, std::addressof(indirect_count), max_indirect_entries, file_offset, ent.file_size));
+
+                        /* Check all indirect entries. */
+                        s64 offset_in_file = 0;
+                        for (auto i = 0; i < indirect_count; ++i) {
+                            /* Get the current entry. */
+                            const auto &indirect_entry = indirect_entries[i];
+
+                            /* Determine the current entry size, which we'll advance by after this iteration. */
+                            size_t cur_size = ent.file_size - offset_in_file;
+                            if (i + 1 < indirect_count) {
+                                cur_size = std::min<size_t>(indirect_entries[i + 1].GetVirtualOffset() - std::max<s64>(file_offset, indirect_entry.GetVirtualOffset()), cur_size);
+                            }
+                            ON_SCOPE_EXIT { offset_in_file += cur_size; };
+
+                            /* We should have non-zero in this entry. */
+                            AMS_ABORT_UNLESS(cur_size > 0);
+
+                            /* If the entry is from the base storage, skip it. */
+                            if (indirect_entry.storage_index == 0) {
+                                continue;
+                            }
+
+                            /* The file has been updated at least once. */
+                            was_updated = true;
+
+                            /* Now, let's find the generation it was updated in. */
+                            {
+                                /* Get the aes ctr ex entries. */
+                                s32 aes_ctr_ex_count = 0;
+                                R_TRY(aes_ctr_ex->GetEntryList(aes_ctr_ex_entries, std::addressof(aes_ctr_ex_count), max_aes_ctr_ex_entries, indirect_entry.GetPhysicalOffset(), cur_size));
+
+                                /* Check all aes ctr ex entries. */
+                                for (auto j = 0; j < aes_ctr_ex_count; ++j) {
+                                    /* Get the current entry. */
+                                    const auto &aes_ctr_ex_entry = aes_ctr_ex_entries[j];
+
+                                    /* Check the entry's generation. */
+                                    max_gen = std::max(max_gen, aes_ctr_ex_entry.generation);
+                                }
+                            }
+                        }
+                    }
+
+                    /* If we should, copy the file. */
+                    if (was_updated && max_gen >= min_gen) {
+                        printf("Saving [%02d] %s%s...\n", max_gen, prefix, path.GetString());
+                        R_TRY(fssystem::CopyFile(std::addressof(subdir_fs), src_fs, path, path, buffer, WorkBufferSize));
                     }
 
                     R_SUCCEED();

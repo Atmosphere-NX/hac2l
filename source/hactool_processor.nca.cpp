@@ -433,12 +433,22 @@ namespace ams::hactool {
 
                 /* If we have a path, extract to it. */
                 if (dir_path != nullptr) {
-                    ExtractDirectory(m_local_fs, ctx.file_systems[i], prefix, dir_path, "/");
+                    if (ctx.romfs_index == i && m_options.only_updated && !ctx.header_readers[i].ExistsCompressionLayer() && ctx.storage_contexts[i].aes_ctr_ex_storage != nullptr && ctx.storage_contexts[i].indirect_storage != nullptr) {
+                        if (!m_options.list_romfs) {
+                            ExtractUpdatedRomFsDirectory(m_local_fs, static_cast<fssystem::RomFsFileSystem *>(ctx.file_systems[i].get()), ctx.storage_contexts[i].indirect_storage, ctx.storage_contexts[i].aes_ctr_ex_storage, m_options.updated_generation, prefix, dir_path, "/");
+                        }
+                    } else {
+                        ExtractDirectory(m_local_fs, ctx.file_systems[i], prefix, dir_path, "/");
+                    }
                 }
             }
 
             if (ctx.romfs_index == i && ctx.is_mounted[i] && m_options.list_romfs) {
-                PrintDirectory(ctx.file_systems[i], "rom:", "/");
+                if (m_options.only_updated && !ctx.header_readers[i].ExistsCompressionLayer() && ctx.storage_contexts[i].aes_ctr_ex_storage != nullptr && ctx.storage_contexts[i].indirect_storage != nullptr) {
+                    PrintUpdatedRomFsDirectory(static_cast<fssystem::RomFsFileSystem *>(ctx.file_systems[i].get()), ctx.storage_contexts[i].indirect_storage, ctx.storage_contexts[i].aes_ctr_ex_storage, m_options.updated_generation, "rom:", "/");
+                } else {
+                    PrintDirectory(ctx.file_systems[i], "rom:", "/");
+                }
             }
         }
 

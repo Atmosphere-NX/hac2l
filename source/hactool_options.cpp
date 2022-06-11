@@ -136,6 +136,7 @@ namespace ams::hactool {
             MakeOptionHandler("raw", 'r', [] (Options &options) { options.raw = true; }),
             MakeOptionHandler("enablehash", 'h', [] (Options &options) { options.enable_hash = true; }),
             MakeOptionHandler("disablekeywarns", [] (Options &options) { options.disable_key_warns = true; }),
+            MakeOptionHandler("onlyupdated", [] (Options &options) { options.only_updated = true; }),
             MakeOptionHandler("keyset", 'k', [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.key_file_path), arg); }),
             MakeOptionHandler("titlekeys", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.titlekey_path), arg); }),
             MakeOptionHandler("consolekeys", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.consolekey_path), arg); }),
@@ -167,6 +168,7 @@ namespace ams::hactool {
             MakeOptionHandler("appindex", [] (Options &options, const char *arg) { return ParseIntegerArgument(std::addressof(options.preferred_app_index), arg); }),
             MakeOptionHandler("programindex", [] (Options &options, const char *arg) { return ParseIntegerArgument(std::addressof(options.preferred_program_index), arg); }),
             MakeOptionHandler("appversion", [] (Options &options, const char *arg) { return ParseIntegerArgument(std::addressof(options.preferred_version), arg); }),
+            MakeOptionHandler("updatedgen", [] (Options &options, const char *arg) { return ParseIntegerArgument(std::addressof(options.updated_generation), arg); }),
         };
 
     }
