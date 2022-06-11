@@ -449,6 +449,11 @@ namespace ams::hactool {
     }
 
     void Processor::SaveAsApplicationFileSystem(ProcessAsApplicationFileSystemContext &ctx) {
+        /* Save the target application's program nca. */
+        if (ctx.has_target) {
+            this->SaveAsNca(ctx.app_nca_ctx);
+        }
+
         /* TODO */
         AMS_UNUSED(ctx);
     }

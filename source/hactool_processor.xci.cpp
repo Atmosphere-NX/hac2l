@@ -373,7 +373,10 @@ namespace ams::hactool {
         if (m_options.secure_partition_out_dir != nullptr) { ExtractDirectoryWithProgress(m_local_fs, ctx.secure_partition.fs, "secure:", m_options.secure_partition_out_dir, "/"); }
         if (m_options.update_partition_out_dir != nullptr) { ExtractDirectoryWithProgress(m_local_fs, ctx.update_partition.fs, "update:", m_options.update_partition_out_dir, "/"); }
 
-        /* TODO: Recurse, dump NCAs? */
+        /* Save the application filesystem. */
+        if (ctx.secure_partition.fs != nullptr) {
+            this->SaveAsApplicationFileSystem(ctx.app_ctx);
+        }
     }
 
 }
