@@ -132,9 +132,21 @@ namespace ams::hactool {
 
         for (s32 i = 0; i < fssystem::NcaHeader::FsCountMax; ++i) {
             ctx->storage_contexts[i].open_raw_storage = true;
-            const auto res = util::GetReference(g_storage_on_nca_creator).CreateWithContext(std::addressof(ctx->raw_sections[i]), std::addressof(ctx->splitters[i]), std::addressof(ctx->header_readers[i]), std::addressof(ctx->storage_contexts[i]), ctx->reader, i);
+
+            const auto res = [&]() -> Result {
+                if (ctx->base_reader != nullptr) {
+                    R_RETURN(util::GetReference(g_storage_on_nca_creator).CreateWithPatchWithContext(std::addressof(ctx->raw_sections[i]), std::addressof(ctx->splitters[i]), std::addressof(ctx->header_readers[i]), std::addressof(ctx->storage_contexts[i]), ctx->base_reader, ctx->reader, i));
+                } else {
+                    R_RETURN(util::GetReference(g_storage_on_nca_creator).CreateWithContext(std::addressof(ctx->raw_sections[i]), std::addressof(ctx->splitters[i]), std::addressof(ctx->header_readers[i]), std::addressof(ctx->storage_contexts[i]), ctx->reader, i));
+                }
+            }();
+
             if (R_SUCCEEDED(res)) {
                 ctx->has_sections[i] = true;
+
+                if (ctx->header_readers[i].ExistsSparseLayer()) {
+                    continue;
+                }
 
                 /* Try to open the non-raw section. */
                 const auto real_res = util::GetReference(g_storage_on_nca_creator).CreateByRawStorage(std::addressof(ctx->sections[i]), std::addressof(ctx->splitters[i]), std::addressof(ctx->header_readers[i]), std::shared_ptr<fs::IStorage>(ctx->raw_sections[i]), std::addressof(ctx->storage_contexts[i]), ctx->reader);

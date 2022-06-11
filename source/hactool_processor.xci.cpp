@@ -359,26 +359,7 @@ namespace ams::hactool {
         }
 
         if (ctx.secure_partition.fs != nullptr) {
-            s32 app_idx = -1;
-            ncm::ApplicationId cur_app_id{};
-            const char *field_name = "Programs";
-            for (const auto &entry : ctx.app_ctx.apps) {
-                if (entry.GetType() != ncm::ContentType::Program) {
-                    continue;
-                }
-
-                if (app_idx == -1 || cur_app_id != entry.GetId()) {
-                    ++app_idx;
-                    cur_app_id = entry.GetId();
-                }
-
-                this->PrintFormat(field_name, "{ Idx=%d, ProgramId=%016" PRIX64 ", Version=0x%08" PRIX32 ", IdOffset=%02" PRIX32 ", MetaType=%s }", app_idx, entry.GetId().value, entry.GetVersion(), entry.GetIdOffset(), entry.GetMetaType() == ncm::ContentMetaType::Patch ? "Patch" : "App");
-                field_name = "";
-            }
-
-            if (ctx.app_ctx.has_target) {
-                this->PrintFormat("Target", "{ ProgramId=%016" PRIX64 ", Version=0x%08" PRIX32 ", IdOffset=%02" PRIX32 " }", ctx.app_ctx.target_app_id.value, ctx.app_ctx.target_version, ctx.app_ctx.target_index);
-            }
+            this->PrintAsApplicationFileSystem(ctx.app_ctx);
         }
 
         AMS_UNUSED(ctx);

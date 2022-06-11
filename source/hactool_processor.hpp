@@ -60,6 +60,7 @@ namespace ams::hactool {
             struct ProcessAsNcaContext {
                 std::shared_ptr<fs::IStorage> storage;
                 std::shared_ptr<fssystem::NcaReader> reader;
+                std::shared_ptr<fssystem::NcaReader> base_reader;
                 s32 exefs_index = -1;
                 s32 romfs_index = -1;
                 std::array<bool, fssystem::NcaHeader::FsCountMax> has_sections{};
@@ -88,6 +89,9 @@ namespace ams::hactool {
                 ncm::ApplicationId target_app_id;
                 u32 target_version;
                 u8 target_index;
+
+                ProcessAsNcaContext app_nca_ctx;
+                ProcessAsNcaContext app_base_nca_ctx;
             };
 
             struct ProcessAsXciContext {

@@ -366,7 +366,40 @@ namespace ams::hactool {
             }
         }
 
-        /* TODO: Recursive processing? */
+        if (ctx->has_target) {
+            /* We have a target. Try to find a patch. */
+            if (auto patch_prog = ctx->apps.Find(ctx->target_app_id, ctx->target_version, ctx->target_index, ncm::ContentType::Program, ncm::ContentMetaType::Patch); patch_prog != ctx->apps.end()) {
+                /* Find a base app. */
+                if (auto same_app_prog = ctx->apps.Find(ctx->target_app_id, ctx->target_version, ctx->target_index, ncm::ContentType::Program, ncm::ContentMetaType::Application); same_app_prog != ctx->apps.end()) {
+                    if (const auto process_res = this->ProcessAsNca(same_app_prog->GetData().storage, std::addressof(ctx->app_base_nca_ctx)); R_SUCCEEDED(process_res)) {
+                        ctx->app_nca_ctx.base_reader = ctx->app_base_nca_ctx.reader;
+                    } else {
+                        fprintf(stderr, "[Warning]: Failed to process target base program nca: 2%03d-%04d\n", process_res.GetModule(), process_res.GetDescription());
+                    }
+                } else if (auto zero_app_prog = ctx->apps.Find(ctx->target_app_id, 0, ctx->target_index, ncm::ContentType::Program, ncm::ContentMetaType::Application); zero_app_prog != ctx->apps.end()) {
+                    if (const auto process_res = this->ProcessAsNca(zero_app_prog->GetData().storage, std::addressof(ctx->app_base_nca_ctx)); R_SUCCEEDED(process_res)) {
+                        ctx->app_nca_ctx.base_reader = ctx->app_base_nca_ctx.reader;
+                    } else {
+                        fprintf(stderr, "[Warning]: Failed to process target base-0 program nca: 2%03d-%04d\n", process_res.GetModule(), process_res.GetDescription());
+                    }
+                }
+
+                if (const auto process_res = this->ProcessAsNca(patch_prog->GetData().storage, std::addressof(ctx->app_nca_ctx)); R_FAILED(process_res)) {
+                    fprintf(stderr, "[Warning]: Failed to process target patch program nca: 2%03d-%04d\n", process_res.GetModule(), process_res.GetDescription());
+                }
+            } else {
+                /* No patch, so we're working with a normal application. */
+                auto app_prog = ctx->apps.Find(ctx->target_app_id, ctx->target_version, ctx->target_index, ncm::ContentType::Program, ncm::ContentMetaType::Application);
+                AMS_ABORT_UNLESS(app_prog != ctx->apps.end());
+
+                /* Parse the app prog. */
+                if (const auto process_res = this->ProcessAsNca(app_prog->GetData().storage, std::addressof(ctx->app_nca_ctx)); R_FAILED(process_res)) {
+                    fprintf(stderr, "[Warning]: Failed to process target program nca: 2%03d-%04d\n", process_res.GetModule(), process_res.GetDescription());
+                }
+            }
+
+            /* TODO: Parse control, etc? */
+        }
 
         /* Print. */
         if (ctx == std::addressof(local_ctx)) {
@@ -405,6 +438,10 @@ namespace ams::hactool {
             if (ctx.has_target) {
                 this->PrintFormat("Target", "{ ProgramId=%016" PRIX64 ", Version=0x%08" PRIX32 ", IdOffset=%02" PRIX32 " }", ctx.target_app_id.value, ctx.target_version, ctx.target_index);
             }
+        }
+
+        if (ctx.has_target) {
+            this->PrintAsNca(ctx.app_nca_ctx);
         }
 
         /* TODO */
