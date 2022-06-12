@@ -19,7 +19,13 @@
 
 namespace ams::hactool {
 
-    Processor::Processor(const Options &options) : m_options(options) {
+    Processor::Processor(const Options &options) : m_options(options), m_base_nca_ctx{}, m_base_xci_ctx{}, m_base_pfs_ctx{}, m_base_appfs_ctx{} {
+        /* Default to no bases. */
+        m_has_base_nca   = false;
+        m_has_base_xci   = false;
+        m_has_base_pfs   = false;
+        m_has_base_appfs = false;
+
         /* Create local file system for host root. */
         fssrv::fscreator::LocalFileSystemCreator local_fs_creator(true);
         fs::Path normalized_path;
@@ -32,6 +38,61 @@ namespace ams::hactool {
     Result Processor::Process() {
         /* Setup our internal keys. */
         this->PresetInternalKeys();
+
+        /* Open any bases we've been provided. */
+        {
+            if (m_options.base_nca_path != nullptr) {
+                std::shared_ptr<fs::IStorage> storage = nullptr;
+                if (const auto open_res = OpenFileStorage(std::addressof(storage), m_local_fs, m_options.base_nca_path); R_SUCCEEDED(open_res)) {
+                    if (const auto proc_res = this->ProcessAsNca(std::move(storage), std::addressof(m_base_nca_ctx)); R_SUCCEEDED(proc_res)) {
+                        m_has_base_nca = true;
+                    } else {
+                        fprintf(stderr, "Failed to process base nca (%s): 2%03d-%04d\n", m_options.base_nca_path, proc_res.GetModule(), proc_res.GetDescription());
+                    }
+                } else {
+                    fprintf(stderr, "Failed to open base nca (%s): 2%03d-%04d\n", m_options.base_nca_path, open_res.GetModule(), open_res.GetDescription());
+                }
+            }
+
+            if (m_options.base_xci_path != nullptr) {
+                std::shared_ptr<fs::IStorage> storage = nullptr;
+                if (const auto open_res = OpenFileStorage(std::addressof(storage), m_local_fs, m_options.base_xci_path); R_SUCCEEDED(open_res)) {
+                    if (const auto proc_res = this->ProcessAsXci(std::move(storage), std::addressof(m_base_xci_ctx)); R_SUCCEEDED(proc_res)) {
+                        m_has_base_xci = true;
+                    } else {
+                        fprintf(stderr, "Failed to process base xci (%s): 2%03d-%04d\n", m_options.base_xci_path, proc_res.GetModule(), proc_res.GetDescription());
+                    }
+                } else {
+                    fprintf(stderr, "Failed to open base xci (%s): 2%03d-%04d\n", m_options.base_xci_path, open_res.GetModule(), open_res.GetDescription());
+                }
+            }
+
+            if (m_options.base_pfs_path != nullptr) {
+                std::shared_ptr<fs::IStorage> storage = nullptr;
+                if (const auto open_res = OpenFileStorage(std::addressof(storage), m_local_fs, m_options.base_pfs_path); R_SUCCEEDED(open_res)) {
+                    if (const auto proc_res = this->ProcessAsPfs(std::move(storage), std::addressof(m_base_pfs_ctx)); R_SUCCEEDED(proc_res)) {
+                        m_has_base_pfs = true;
+                    } else {
+                        fprintf(stderr, "Failed to process base pfs (%s): 2%03d-%04d\n", m_options.base_pfs_path, proc_res.GetModule(), proc_res.GetDescription());
+                    }
+                } else {
+                    fprintf(stderr, "Failed to open base pfs (%s): 2%03d-%04d\n", m_options.base_pfs_path, open_res.GetModule(), open_res.GetDescription());
+                }
+            }
+
+            if (m_options.base_appfs_path != nullptr) {
+                std::shared_ptr<fs::fsa::IFileSystem> fs = nullptr;
+                if (const auto open_res = OpenSubDirectoryFileSystem(std::addressof(fs), m_local_fs, m_options.base_appfs_path); R_SUCCEEDED(open_res)) {
+                    if (const auto proc_res = this->ProcessAsApplicationFileSystem(std::move(fs), std::addressof(m_base_appfs_ctx)); R_SUCCEEDED(proc_res)) {
+                        m_has_base_appfs = true;
+                    } else {
+                        fprintf(stderr, "Failed to process base app fs (%s): 2%03d-%04d\n", m_options.base_appfs_path, proc_res.GetModule(), proc_res.GetDescription());
+                    }
+                } else {
+                    fprintf(stderr, "Failed to open base app fs (%s): 2%03d-%04d\n", m_options.base_appfs_path, open_res.GetModule(), open_res.GetDescription());
+                }
+            }
+        }
 
         if (m_options.file_type == FileType::AppFs) {
             /* Open the filesystem. */

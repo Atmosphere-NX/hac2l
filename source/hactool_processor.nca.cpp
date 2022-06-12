@@ -127,6 +127,47 @@ namespace ams::hactool {
         /* Create an NCA reader for the input file. */
         R_TRY(ParseNca(std::addressof(ctx->reader), ctx->storage, m_external_nca_key_manager));
 
+        /* Decide on a base, if one isn't already set. */
+        {
+            /* First see if we explicitly have a viable base nca. */
+            if (ctx->base_reader == nullptr && m_has_base_nca && m_base_nca_ctx.reader != nullptr && m_base_nca_ctx.reader->GetProgramId() == ctx->reader->GetProgramId()) {
+                ctx->base_reader = m_base_nca_ctx.reader;
+            }
+
+            /* Next, we'll try looking for a match in the appfs of a base xci, pfs, or appfs. */
+            auto GetBaseFromAppFs = [&](ProcessAsApplicationFileSystemContext &app_ctx, const char *src) {
+                if (ctx->base_reader == nullptr) {
+                    if (auto app_prog = app_ctx.apps.Find(ncm::ApplicationId{ctx->reader->GetProgramId() & ~static_cast<u64>(0xFF)}, 0, ctx->reader->GetProgramId() & 0xFF, ncm::ContentType::Program, ncm::ContentMetaType::Application); app_prog != app_ctx.apps.end()) {
+                        ProcessAsNcaContext tmp_ctx{};
+                        if (const auto process_res = this->ProcessAsNca(app_prog->GetData().storage, std::addressof(tmp_ctx)); R_SUCCEEDED(process_res)) {
+                            if (ctx->reader->GetProgramId() )
+                            ctx->base_reader = tmp_ctx.reader;
+                        } else {
+                            fprintf(stderr, "[Warning]: Failed to process base program nca from %s: 2%03d-%04d\n", src, process_res.GetModule(), process_res.GetDescription());
+                        }
+                    }
+                }
+            };
+
+            if (m_has_base_xci && m_base_xci_ctx.secure_partition.fs != nullptr) {
+                m_has_base_xci = false;
+                GetBaseFromAppFs(m_base_xci_ctx.app_ctx, "basexci");
+                m_has_base_xci = true;
+            }
+
+            if (m_has_base_pfs && !m_base_pfs_ctx.is_exefs) {
+                m_has_base_xci = false;
+                GetBaseFromAppFs(m_base_pfs_ctx.app_ctx, "basepfs");
+                m_has_base_pfs = true;
+            }
+
+            if (m_has_base_appfs) {
+                m_has_base_appfs = false;
+                GetBaseFromAppFs(m_base_appfs_ctx, "baseappfs");
+                m_has_base_appfs = true;
+            }
+        }
+
         /* Open storages for each section. */
         std::shared_ptr<fs::IStorage> npdm_storage;
 
@@ -278,6 +319,8 @@ namespace ams::hactool {
         } addon;
         addon.v32 = util::ConvertToBigEndian<u32>(ctx.reader->GetSdkAddonVersion());
         this->PrintFormat("SDK Version", "%" PRIu8 ".%" PRIu8 ".%" PRIu8 ".%" PRIu8, addon.v8[0], addon.v8[1], addon.v8[2], addon.v8[3]);
+
+        this->PrintId64("Program Id", ctx.reader->GetProgramId());
 
         this->PrintString("Distribution Type", fs::impl::IdString().ToString(ctx.reader->GetDistributionType()));
         this->PrintString("Content Type", fs::impl::IdString().ToString(ctx.reader->GetContentType()));

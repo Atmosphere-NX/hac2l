@@ -140,6 +140,15 @@ namespace ams::hactool {
             fssrv::impl::ExternalKeyManager m_external_nca_key_manager;
             std::shared_ptr<fs::fsa::IFileSystem> m_local_fs;
 
+            bool m_has_base_nca;
+            bool m_has_base_xci;
+            bool m_has_base_pfs;
+            bool m_has_base_appfs;
+            ProcessAsNcaContext m_base_nca_ctx;
+            ProcessAsXciContext m_base_xci_ctx;
+            ProcessAsPfsContext m_base_pfs_ctx;
+            ProcessAsApplicationFileSystemContext m_base_appfs_ctx;
+
             os::SdkMutex m_print_lock;
             char m_indent_buffer[1_KB];
         public:

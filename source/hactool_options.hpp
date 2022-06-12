@@ -36,6 +36,10 @@ namespace ams::hactool {
     struct Options {
         const char *in_file_path = nullptr;
         FileType file_type = FileType::Nca;
+        const char *base_nca_path = nullptr;
+        const char *base_xci_path = nullptr;
+        const char *base_pfs_path = nullptr;
+        const char *base_appfs_path = nullptr;
         bool valid = false;
         bool raw = false;
         bool verify = false;
