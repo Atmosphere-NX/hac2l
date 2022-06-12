@@ -168,7 +168,7 @@ namespace ams::hactool {
             MakeOptionHandler("appindex", [] (Options &options, const char *arg) { return ParseIntegerArgument(std::addressof(options.preferred_app_index), arg); }),
             MakeOptionHandler("programindex", [] (Options &options, const char *arg) { return ParseIntegerArgument(std::addressof(options.preferred_program_index), arg); }),
             MakeOptionHandler("appversion", [] (Options &options, const char *arg) { return ParseIntegerArgument(std::addressof(options.preferred_version), arg); }),
-            MakeOptionHandler("updatedgen", [] (Options &options, const char *arg) { return ParseIntegerArgument(std::addressof(options.updated_generation), arg); }),
+            MakeOptionHandler("updatedsince", [] (Options &options, const char *arg) { return ParseIntegerArgument(std::addressof(options.updated_generation), arg); }),
         };
 
     }
