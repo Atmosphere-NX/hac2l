@@ -575,7 +575,8 @@ namespace ams::hactool {
             ProgressPrinter<40> printer{prog_prefix, static_cast<size_t>(size)};
 
             /* Write. */
-            const s64 end_offset = static_cast<s64>(offset + size);
+            const s64 start_offset = offset;
+            const s64 end_offset   = static_cast<s64>(offset + size);
             while (offset < end_offset) {
                 const s64 cur_write_size = std::min<s64>(WorkBufferSize, end_offset - offset);
 
@@ -583,7 +584,7 @@ namespace ams::hactool {
                 R_TRY(base_file->Write(offset, buffer, cur_write_size, fs::WriteOption::None));
 
                 offset += cur_write_size;
-                printer.Update(static_cast<size_t>(offset));
+                printer.Update(static_cast<size_t>(offset - start_offset));
             }
 
             R_SUCCEED();
