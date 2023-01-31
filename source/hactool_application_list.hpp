@@ -60,12 +60,12 @@ namespace ams::hactool {
     template<typename T>
     struct ApplicationContentTreeEntryCompare {
         static ALWAYS_INLINE int Compare(const ApplicationContentTreeEntry<T> &a, const ApplicationContentTreeEntry<T> &b) {
-            const auto a_i = a.GetId();
+            const auto a_i = a.GetId().value;
             const auto a_v = a.GetVersion();
             const auto a_o = a.GetIdOffset();
             const auto a_t = a.GetType();
             const auto a_m = a.GetMetaType();
-            const auto b_i = b.GetId();
+            const auto b_i = b.GetId().value;
             const auto b_v = b.GetVersion();
             const auto b_o = b.GetIdOffset();
             const auto b_t = b.GetType();
