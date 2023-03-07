@@ -470,7 +470,7 @@ namespace ams::hactool {
             }
 
             /* Allocate buffer for the file. */
-            auto buf = std::make_unique<char[]>(file_size);
+            auto buf = std::make_unique<char[]>(file_size + 1);
             if (buf == nullptr) {
                 fprintf(stderr, "[Warning]: failed to allocate memory for key file (%s)\n", path);
                 return;
@@ -481,6 +481,9 @@ namespace ams::hactool {
                 fprintf(stderr, "[Warning]: failed to read key file (%s): 2%03d-%04d\n", path, res.GetModule(), res.GetDescription());
                 return;
             }
+
+            /* Null-terminate the file contents. */
+            buf[file_size] = '\x00';
 
             ProcessKeyValueFile(path, buf.get(), file_size, f);
         }

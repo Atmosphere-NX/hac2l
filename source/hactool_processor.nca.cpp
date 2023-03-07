@@ -156,7 +156,7 @@ namespace ams::hactool {
             }
 
             if (m_has_base_pfs && !m_base_pfs_ctx.is_exefs) {
-                m_has_base_xci = false;
+                m_has_base_pfs = false;
                 GetBaseFromAppFs(m_base_pfs_ctx.app_ctx, "basepfs");
                 m_has_base_pfs = true;
             }
