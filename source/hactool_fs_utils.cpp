@@ -44,7 +44,7 @@ namespace ams::hactool {
                     m_current = new_current;
 
                     const size_t unit = m_total / Count;
-                    if (const size_t segs = m_current / unit; segs != m_segs) {
+                    if (const size_t segs = std::min<size_t>(m_current / unit, Count); segs != m_segs) {
                         m_segs = segs;
                         this->Render();
                     }
