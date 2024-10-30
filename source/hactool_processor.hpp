@@ -126,7 +126,7 @@ namespace ams::hactool {
                 ProcessAsApplicationFileSystemContext app_ctx;
             };
 
-            struct ProcessAsPfsContext {
+            struct ProcessAsNspContext {
                 std::shared_ptr<fs::IStorage> storage;
                 std::shared_ptr<fs::fsa::IFileSystem> fs;
 
@@ -148,11 +148,11 @@ namespace ams::hactool {
 
             bool m_has_base_nca;
             bool m_has_base_xci;
-            bool m_has_base_pfs;
+            bool m_has_base_nsp;
             bool m_has_base_appfs;
             ProcessAsNcaContext m_base_nca_ctx;
             ProcessAsXciContext m_base_xci_ctx;
-            ProcessAsPfsContext m_base_pfs_ctx;
+            ProcessAsNspContext m_base_nsp_ctx;
             ProcessAsApplicationFileSystemContext m_base_appfs_ctx;
 
             os::SdkMutex m_print_lock;
@@ -240,7 +240,7 @@ namespace ams::hactool {
             Result ProcessAsNca(std::shared_ptr<fs::IStorage> storage, ProcessAsNcaContext *ctx = nullptr);
             Result ProcessAsNpdm(std::shared_ptr<fs::IStorage> storage, ProcessAsNpdmContext *ctx = nullptr);
             Result ProcessAsXci(std::shared_ptr<fs::IStorage> storage, ProcessAsXciContext *ctx = nullptr);
-            Result ProcessAsPfs(std::shared_ptr<fs::IStorage> storage, ProcessAsPfsContext *ctx = nullptr);
+            Result ProcessAsNsp(std::shared_ptr<fs::IStorage> storage, ProcessAsNspContext *ctx = nullptr);
             Result ProcessAsRomfs(std::shared_ptr<fs::IStorage> storage, ProcessAsRomfsContext *ctx = nullptr);
             Result ProcessAsApplicationFileSystem(std::shared_ptr<fs::fsa::IFileSystem> fs, ProcessAsApplicationFileSystemContext *ctx = nullptr);
 
@@ -248,7 +248,7 @@ namespace ams::hactool {
             void PrintAsNca(ProcessAsNcaContext &ctx);
             void PrintAsNpdm(ProcessAsNpdmContext &ctx);
             void PrintAsXci(ProcessAsXciContext &ctx);
-            void PrintAsPfs(ProcessAsPfsContext &ctx);
+            void PrintAsNsp(ProcessAsNspContext &ctx);
             void PrintAsRomfs(ProcessAsRomfsContext &ctx);
             void PrintAsApplicationFileSystem(ProcessAsApplicationFileSystemContext &ctx);
 
@@ -256,7 +256,7 @@ namespace ams::hactool {
             void SaveAsNca(ProcessAsNcaContext &ctx);
             void SaveAsNpdm(ProcessAsNpdmContext &ctx);
             void SaveAsXci(ProcessAsXciContext &ctx);
-            void SaveAsPfs(ProcessAsPfsContext &ctx);
+            void SaveAsNsp(ProcessAsNspContext &ctx);
             void SaveAsRomfs(ProcessAsRomfsContext &ctx);
             void SaveAsApplicationFileSystem(ProcessAsApplicationFileSystemContext &ctx);
     };

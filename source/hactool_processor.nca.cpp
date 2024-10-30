@@ -134,7 +134,7 @@ namespace ams::hactool {
                 ctx->base_reader = m_base_nca_ctx.reader;
             }
 
-            /* Next, we'll try looking for a match in the appfs of a base xci, pfs, or appfs. */
+            /* Next, we'll try looking for a match in the appfs of a base xci, nsp, or appfs. */
             auto GetBaseFromAppFs = [&](ProcessAsApplicationFileSystemContext &app_ctx, const char *src) {
                 if (ctx->base_reader == nullptr) {
                     if (auto app_prog = app_ctx.apps.Find(ncm::ApplicationId{ctx->reader->GetProgramId() & ~static_cast<u64>(0xFF)}, 0, ctx->reader->GetProgramId() & 0xFF, ncm::ContentType::Program, ncm::ContentMetaType::Application); app_prog != app_ctx.apps.end()) {
@@ -155,10 +155,10 @@ namespace ams::hactool {
                 m_has_base_xci = true;
             }
 
-            if (m_has_base_pfs && !m_base_pfs_ctx.is_exefs) {
-                m_has_base_pfs = false;
-                GetBaseFromAppFs(m_base_pfs_ctx.app_ctx, "basepfs");
-                m_has_base_pfs = true;
+            if (m_has_base_nsp && !m_base_nsp_ctx.is_exefs) {
+                m_has_base_nsp = false;
+                GetBaseFromAppFs(m_base_nsp_ctx.app_ctx, "basensp");
+                m_has_base_nsp = true;
             }
 
             if (m_has_base_appfs) {

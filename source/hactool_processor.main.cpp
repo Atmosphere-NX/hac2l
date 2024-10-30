@@ -19,11 +19,11 @@
 
 namespace ams::hactool {
 
-    Processor::Processor(const Options &options) : m_options(options), m_base_nca_ctx{}, m_base_xci_ctx{}, m_base_pfs_ctx{}, m_base_appfs_ctx{} {
+    Processor::Processor(const Options &options) : m_options(options), m_base_nca_ctx{}, m_base_xci_ctx{}, m_base_nsp_ctx{}, m_base_appfs_ctx{} {
         /* Default to no bases. */
         m_has_base_nca   = false;
         m_has_base_xci   = false;
-        m_has_base_pfs   = false;
+        m_has_base_nsp   = false;
         m_has_base_appfs = false;
 
         /* Create local file system for host root. */
@@ -67,16 +67,16 @@ namespace ams::hactool {
                 }
             }
 
-            if (m_options.base_pfs_path != nullptr) {
+            if (m_options.base_nsp_path != nullptr) {
                 std::shared_ptr<fs::IStorage> storage = nullptr;
-                if (const auto open_res = OpenFileStorage(std::addressof(storage), m_local_fs, m_options.base_pfs_path); R_SUCCEEDED(open_res)) {
-                    if (const auto proc_res = this->ProcessAsPfs(std::move(storage), std::addressof(m_base_pfs_ctx)); R_SUCCEEDED(proc_res)) {
-                        m_has_base_pfs = true;
+                if (const auto open_res = OpenFileStorage(std::addressof(storage), m_local_fs, m_options.base_nsp_path); R_SUCCEEDED(open_res)) {
+                    if (const auto proc_res = this->ProcessAsNsp(std::move(storage), std::addressof(m_base_nsp_ctx)); R_SUCCEEDED(proc_res)) {
+                        m_has_base_nsp = true;
                     } else {
-                        fprintf(stderr, "Failed to process base pfs (%s): 2%03d-%04d\n", m_options.base_pfs_path, proc_res.GetModule(), proc_res.GetDescription());
+                        fprintf(stderr, "Failed to process base nsp (%s): 2%03d-%04d\n", m_options.base_nsp_path, proc_res.GetModule(), proc_res.GetDescription());
                     }
                 } else {
-                    fprintf(stderr, "Failed to open base pfs (%s): 2%03d-%04d\n", m_options.base_pfs_path, open_res.GetModule(), open_res.GetDescription());
+                    fprintf(stderr, "Failed to open base nsp (%s): 2%03d-%04d\n", m_options.base_nsp_path, open_res.GetModule(), open_res.GetDescription());
                 }
             }
 
@@ -121,7 +121,7 @@ namespace ams::hactool {
                     R_TRY(this->ProcessAsXci(std::move(input)));
                     break;
                 case FileType::Pfs:
-                    R_TRY(this->ProcessAsPfs(std::move(input)));
+                    R_TRY(this->ProcessAsNsp(std::move(input)));
                     break;
                 case FileType::Romfs:
                     R_TRY(this->ProcessAsRomfs(std::move(input)));

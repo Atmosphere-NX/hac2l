@@ -19,9 +19,9 @@
 
 namespace ams::hactool {
 
-    Result Processor::ProcessAsPfs(std::shared_ptr<fs::IStorage> storage, ProcessAsPfsContext *ctx) {
+    Result Processor::ProcessAsNsp(std::shared_ptr<fs::IStorage> storage, ProcessAsNspContext *ctx) {
         /* Ensure we have a context. */
-        ProcessAsPfsContext local_ctx{};
+        ProcessAsNspContext local_ctx{};
         if (ctx == nullptr) {
             ctx = std::addressof(local_ctx);
         }
@@ -78,18 +78,18 @@ namespace ams::hactool {
 
         /* Print. */
         if (ctx == std::addressof(local_ctx)) {
-            this->PrintAsPfs(*ctx);
+            this->PrintAsNsp(*ctx);
         }
 
         /* Save. */
         if (ctx == std::addressof(local_ctx)) {
-            this->SaveAsPfs(*ctx);
+            this->SaveAsNsp(*ctx);
         }
 
         R_SUCCEED();
     }
 
-    void Processor::PrintAsPfs(ProcessAsPfsContext &ctx) {
+    void Processor::PrintAsNsp(ProcessAsNspContext &ctx) {
         {
             auto _ = this->PrintHeader("PartitionFileSystem");
             this->PrintMagic(ctx.magic);
@@ -98,7 +98,7 @@ namespace ams::hactool {
 
                 char print_prefix[1_KB + 5];
                 std::memset(print_prefix, ' ', WidthToPrintFieldValue);
-                util::TSNPrintf(print_prefix, sizeof(print_prefix), "%s%s", m_indent_buffer, "pfs:");
+                util::TSNPrintf(print_prefix, sizeof(print_prefix), "%s%s", m_indent_buffer, "nsp:");
 
                 PrintDirectory(ctx.fs, print_prefix, "/");
             }
@@ -111,8 +111,8 @@ namespace ams::hactool {
         }
     }
 
-    void Processor::SaveAsPfs(ProcessAsPfsContext &ctx) {
-        /* Save pfs contents. */
+    void Processor::SaveAsNsp(ProcessAsNspContext &ctx) {
+        /* Save nsp contents. */
         {
             /* Determine path to extract to. */
             const char *dir_path = nullptr;
@@ -128,7 +128,7 @@ namespace ams::hactool {
 
             /* If we have a path, extract to it. */
             if (dir_path != nullptr) {
-                ExtractDirectory(m_local_fs, ctx.fs, "pfs:", dir_path, "/");
+                ExtractDirectory(m_local_fs, ctx.fs, "nsp:", dir_path, "/");
             }
         }
         if (ctx.is_exefs) {
