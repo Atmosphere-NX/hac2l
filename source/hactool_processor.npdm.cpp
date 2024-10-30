@@ -611,8 +611,8 @@ namespace ams::hactool {
                 /* Verify the signature. */
                 const u8 *sig         = ctx.acid->signature;
                 const size_t sig_size = sizeof(ctx.acid->signature);
-                const u8 *mod         = fssystem::GetAcidSignatureKeyModulus(!m_options.dev, ctx.npdm->signature_key_generation);
-                const size_t mod_size = fssystem::AcidSignatureKeyModulusSize;
+                const u8 *mod         = fssystem::GetAcidSignatureKeyModulus(ncm::ContentMetaPlatform::Nx, !m_options.dev, ctx.npdm->signature_key_generation, false);
+                const size_t mod_size = fssystem::GetAcidSignatureKeyModulusSize(ncm::ContentMetaPlatform::Nx, false);
                 const u8 *exp         = fssystem::GetAcidSignatureKeyPublicExponent();
                 const size_t exp_size = fssystem::AcidSignatureKeyPublicExponentSize;
                 const u8 *msg         = ctx.acid->modulus;
