@@ -115,7 +115,7 @@ namespace ams::hactool {
         }
 
         const OptionHandler OptionHandlers[] = {
-            MakeOptionHandler("intype", "Specify input file type [nca, xci, pfs or pfs0 or nsp, appfs, npdm]", 't', [] (Options &options, const char *arg) {
+            MakeOptionHandler("intype", "Specify input file type [nca, xci, pfs or pfs0 or nsp, appfs, romfs, npdm]", 't', [] (Options &options, const char *arg) {
                 if (std::strcmp(arg, "npdm") == 0) {
                     options.file_type = FileType::Npdm;
                 } else if (std::strcmp(arg, "nca") == 0) {
@@ -124,6 +124,8 @@ namespace ams::hactool {
                     options.file_type = FileType::Xci;
                 } else if (std::strcmp(arg, "appfs") == 0) {
                     options.file_type = FileType::AppFs;
+                } else if (std::strcmp(arg, "romfs") == 0) {
+                    options.file_type = FileType::Romfs;
                 } else if (std::strcmp(arg, "pfs") == 0 || std::strcmp(arg, "pfs0") == 0 || std::strcmp(arg, "nsp") == 0) {
                     options.file_type = FileType::Pfs;
                 } else {
@@ -165,7 +167,6 @@ namespace ams::hactool {
             MakeOptionHandler("section1dir", "[nca] Specify Section 1 directory path.", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.section_out_dir_paths[1]), arg); }),
             MakeOptionHandler("section2dir", "[nca] Specify Section 2 directory path.", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.section_out_dir_paths[2]), arg); }),
             MakeOptionHandler("section3dir", "[nca] Specify Section 3 directory path.", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.section_out_dir_paths[3]), arg); }),
-            MakeOptionHandler("listupdate", "[nca] List update details.", [] (Options &options) { options.list_update = true; }),
             MakeOptionHandler("onlyupdated", "[nca] Ignore non-updated files in update partitions.", [] (Options &options) { options.only_updated = true; }),
             MakeOptionHandler("updatedsince", "[nca] Ignore files updated prior to a specific update generation.", [] (Options &options, const char *arg) { return ParseIntegerArgument(std::addressof(options.updated_generation), arg); }),
             MakeOptionHandler("json", "[nca/exefs/npdm/kip] Specify file path for saving JSON representation of program permissions.", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.json_out_file_path), arg); }),
@@ -174,6 +175,7 @@ namespace ams::hactool {
             MakeOptionHandler("normaldir", "[xci] Specify xci normal hfs0 directory path.", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.normal_partition_out_dir), arg); }),
             MakeOptionHandler("updatedir", "[xci] Specify xci update hfs0 directory path.", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.update_partition_out_dir), arg); }),
             MakeOptionHandler("logodir", "[xci] Specify xci logo hfs0 directory path.", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.logo_partition_out_dir), arg); }),
+            MakeOptionHandler("listupdate", "[xci] List update details.", [] (Options &options) { options.list_update = true; }),
             MakeOptionHandler("ciphertext", "[unused] Specify ciphertext output path.", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.ciphertext_out_path), arg); }),
         };
 

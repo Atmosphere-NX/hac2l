@@ -135,6 +135,11 @@ namespace ams::hactool {
                 ProcessAsNpdmContext npdm_ctx;
                 ProcessAsApplicationFileSystemContext app_ctx;
             };
+
+            struct ProcessAsRomfsContext {
+                std::shared_ptr<fs::IStorage> storage;
+                std::shared_ptr<fs::fsa::IFileSystem> fs;
+            };
         private:
             Options m_options;
             fssrv::impl::ExternalKeyManager m_external_nca_key_manager;
@@ -235,6 +240,7 @@ namespace ams::hactool {
             Result ProcessAsNpdm(std::shared_ptr<fs::IStorage> storage, ProcessAsNpdmContext *ctx = nullptr);
             Result ProcessAsXci(std::shared_ptr<fs::IStorage> storage, ProcessAsXciContext *ctx = nullptr);
             Result ProcessAsPfs(std::shared_ptr<fs::IStorage> storage, ProcessAsPfsContext *ctx = nullptr);
+            Result ProcessAsRomfs(std::shared_ptr<fs::IStorage> storage, ProcessAsRomfsContext *ctx = nullptr);
             Result ProcessAsApplicationFileSystem(std::shared_ptr<fs::fsa::IFileSystem> fs, ProcessAsApplicationFileSystemContext *ctx = nullptr);
 
             /* Printing. */
@@ -242,6 +248,7 @@ namespace ams::hactool {
             void PrintAsNpdm(ProcessAsNpdmContext &ctx);
             void PrintAsXci(ProcessAsXciContext &ctx);
             void PrintAsPfs(ProcessAsPfsContext &ctx);
+            void PrintAsRomfs(ProcessAsRomfsContext &ctx);
             void PrintAsApplicationFileSystem(ProcessAsApplicationFileSystemContext &ctx);
 
             /* Saving. */
@@ -249,6 +256,7 @@ namespace ams::hactool {
             void SaveAsNpdm(ProcessAsNpdmContext &ctx);
             void SaveAsXci(ProcessAsXciContext &ctx);
             void SaveAsPfs(ProcessAsPfsContext &ctx);
+            void SaveAsRomfs(ProcessAsRomfsContext &ctx);
             void SaveAsApplicationFileSystem(ProcessAsApplicationFileSystemContext &ctx);
     };
 

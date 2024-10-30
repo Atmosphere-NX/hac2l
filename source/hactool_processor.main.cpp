@@ -123,6 +123,9 @@ namespace ams::hactool {
                 case FileType::Pfs:
                     R_TRY(this->ProcessAsPfs(std::move(input)));
                     break;
+                case FileType::Romfs:
+                    R_TRY(this->ProcessAsRomfs(std::move(input)));
+                    break;
                 AMS_UNREACHABLE_DEFAULT_CASE();
             }
         }
