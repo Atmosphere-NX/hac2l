@@ -29,6 +29,9 @@ namespace ams::hactool {
         /* Set the fs. */
         ctx->storage = std::move(storage);
 
+        /* Read the magic. */
+        R_TRY(ctx->storage->Read(0, std::addressof(ctx->magic), sizeof(ctx->magic)));
+
         /* Mount the partition filesystem. */
         {
             /* Allocate the fs. */
@@ -87,6 +90,20 @@ namespace ams::hactool {
     }
 
     void Processor::PrintAsPfs(ProcessAsPfsContext &ctx) {
+        {
+            auto _ = this->PrintHeader("PartitionFileSystem");
+            this->PrintMagic(ctx.magic);
+            {
+                auto _ = this->PrintHeader("Files");
+
+                char print_prefix[1_KB + 5];
+                std::memset(print_prefix, ' ', WidthToPrintFieldValue);
+                util::TSNPrintf(print_prefix, sizeof(print_prefix), "%s%s", m_indent_buffer, "pfs:");
+
+                PrintDirectory(ctx.fs, print_prefix, "/");
+            }
+        }
+
         if (ctx.is_exefs) {
             this->PrintAsNpdm(ctx.npdm_ctx);
         } else {
@@ -95,6 +112,25 @@ namespace ams::hactool {
     }
 
     void Processor::SaveAsPfs(ProcessAsPfsContext &ctx) {
+        /* Save pfs contents. */
+        {
+            /* Determine path to extract to. */
+            const char *dir_path = nullptr;
+            if (dir_path == nullptr && ctx.is_exefs && m_options.exefs_out_dir_path != nullptr) {
+                dir_path = m_options.exefs_out_dir_path;
+            }
+            if (dir_path == nullptr && m_options.nsp_out_dir_path != nullptr) {
+                dir_path = m_options.nsp_out_dir_path;
+            }
+            if (dir_path == nullptr && m_options.default_out_dir_path != nullptr) {
+                dir_path = m_options.default_out_dir_path;
+            }
+
+            /* If we have a path, extract to it. */
+            if (dir_path != nullptr) {
+                ExtractDirectory(m_local_fs, ctx.fs, "pfs:", dir_path, "/");
+            }
+        }
         if (ctx.is_exefs) {
             this->SaveAsNpdm(ctx.npdm_ctx);
         } else {

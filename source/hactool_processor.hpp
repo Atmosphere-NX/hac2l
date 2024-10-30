@@ -130,6 +130,7 @@ namespace ams::hactool {
                 std::shared_ptr<fs::IStorage> storage;
                 std::shared_ptr<fs::fsa::IFileSystem> fs;
 
+                u32 magic;
                 bool is_exefs;
 
                 ProcessAsNpdmContext npdm_ctx;

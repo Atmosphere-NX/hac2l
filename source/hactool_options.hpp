@@ -62,6 +62,7 @@ namespace ams::hactool {
         const char *romfs_out_file_path = nullptr;
         const char *romfs_out_dir_path = nullptr;
         const char *ini_out_dir_path = nullptr;
+        const char *nsp_out_dir_path = nullptr;
         const char *default_out_dir_path = nullptr;
         const char *default_out_file_path = nullptr;
         const char *plaintext_out_path = nullptr;

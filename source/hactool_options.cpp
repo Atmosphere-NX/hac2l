@@ -176,6 +176,8 @@ namespace ams::hactool {
             MakeOptionHandler("updatedir", "[xci] Specify xci update hfs0 directory path.", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.update_partition_out_dir), arg); }),
             MakeOptionHandler("logodir", "[xci] Specify xci logo hfs0 directory path.", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.logo_partition_out_dir), arg); }),
             MakeOptionHandler("listupdate", "[xci] List update details.", [] (Options &options) { options.list_update = true; }),
+            MakeOptionHandler("pfsdir", "[pfs] Specify pfs directory path.", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.nsp_out_dir_path), arg); }),
+            MakeOptionHandler("nspdir", "[pfs] Specify nsp directory path. Synonym for pfsdir.", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.nsp_out_dir_path), arg); }),
             MakeOptionHandler("ciphertext", "[unused] Specify ciphertext output path.", [] (Options &options, const char *arg) { return CreateFilePath(std::addressof(options.ciphertext_out_path), arg); }),
         };
 
