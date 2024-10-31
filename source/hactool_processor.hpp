@@ -235,6 +235,7 @@ namespace ams::hactool {
 
             /* Utility/management. */
             void PresetInternalKeys();
+            void PrintInternalKeys();
 
             /* Procesing. */
             Result ProcessAsNca(std::shared_ptr<fs::IStorage> storage, ProcessAsNcaContext *ctx = nullptr);

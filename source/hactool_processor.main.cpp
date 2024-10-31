@@ -39,6 +39,11 @@ namespace ams::hactool {
         /* Setup our internal keys. */
         this->PresetInternalKeys();
 
+        if (m_options.file_type == FileType::Keygen) {
+            this->PrintInternalKeys();
+            R_SUCCEED();
+        }
+
         /* Open any bases we've been provided. */
         {
             if (m_options.base_nca_path != nullptr) {

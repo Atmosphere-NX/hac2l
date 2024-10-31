@@ -60,18 +60,20 @@ namespace ams::hactool {
             u8 titlekek_source[AesKeySize];                                                 /* Seed for titlekeks. */
             u8 header_kek_source[AesKeySize];                                               /* Seed for header kek. */
             u8 sd_card_kek_source[AesKeySize];                                              /* Seed for SD card kek. */
-            u8 sd_card_nca_key_source[0x20];                                                /* Seed for SD card encryption keys. */
-            u8 sd_card_save_key_source[0x20];                                               /* Seed for SD card encryption keys. */
+            u8 sd_card_nca_key_source[2 * AesKeySize];                                      /* Seed for SD card NCA encryption keys. */
+            u8 sd_card_save_key_source[2 * AesKeySize];                                     /* Seed for SD card NCA encryption keys. */
             u8 save_mac_kek_source[AesKeySize];                                             /* Seed for save kek. */
             u8 save_mac_key_source[AesKeySize];                                             /* Seed for save key. */
-            u8 header_key_source[pkg1::KeyGeneration_Max];                                  /* Seed for NCA header key. */
-            u8 header_key[pkg1::KeyGeneration_Max];                                         /* NCA header key. */
+            u8 header_key_source[2 * AesKeySize];                                           /* Seed for NCA header key. */
+            u8 header_key[2 * AesKeySize];                                                  /* NCA header key. */
             u8 titlekeks[pkg1::KeyGeneration_Max][AesKeySize];                              /* Title key encryption keys. */
-            u8 key_area_keys[pkg1::KeyGeneration_Max][3][AesKeySize];                       /* Key area encryption keys. */
+            u8 key_area_key_applications[pkg1::KeyGeneration_Max][AesKeySize];              /* Key area encryption keys for Application. */
+            u8 key_area_key_oceans[pkg1::KeyGeneration_Max][AesKeySize];                    /* Key area encryption keys for Ocean. */
+            u8 key_area_key_systems[pkg1::KeyGeneration_Max][AesKeySize];                   /* Key area encryption keys for System. */
             u8 xci_header_key[AesKeySize];                                                  /* Key for XCI partially encrypted header. */
             u8 xci_t1_titlekey_keks[gc::impl::GcCrypto::GcTitleKeyKekIndexMax][AesKeySize]; /* Kek used to decrypt XCI T1 title keys. */
             u8 save_mac_key[AesKeySize];                                                    /* Key used to sign savedata. */
-            u8 sd_card_keys[2][pkg1::KeyGeneration_Max];
+            u8 sd_card_keys[2][2 * AesKeySize];                                             /* Keys to decrypt SD card data. */
             u8 nca_hdr_fixed_key_moduli[2][RsaKeySize];                                     /* NCA header fixed key RSA pubk. */
             u8 acid_fixed_key_moduli[2][RsaKeySize];                                        /* ACID fixed key RSA pubk. */
             u8 package2_fixed_key_modulus[RsaKeySize];                                      /* Package2 Header RSA pubk. */
@@ -141,13 +143,20 @@ namespace ams::hactool {
 
             /* Decrypt keyblobs. */
             for (int gen = pkg1::KeyGeneration_1_0_0; gen < pkg1::KeyGeneration_6_2_0; ++gen) {
-                SKIP_IF_UNSET(ks.keyblob_keys);
-                SKIP_IF_UNSET(ks.keyblob_mac_keys);
-                SKIP_IF_UNSET(ks.encrypted_keyblobs);
+                SKIP_IF_UNSET(ks.keyblob_keys[gen]);
+                SKIP_IF_UNSET(ks.keyblob_mac_keys[gen]);
+                SKIP_IF_UNSET(ks.encrypted_keyblobs[gen]);
 
-                /* TODO: Cmac */
+                /* Calculate Cmac. */
+                u8 cmac[crypto::Aes128CmacGenerator::MacSize];
+                crypto::GenerateAes128Cmac(cmac, sizeof(cmac), ks.encrypted_keyblobs[gen] + sizeof(cmac), sizeof(ks.encrypted_keyblobs[gen]) - sizeof(cmac), ks.keyblob_mac_keys[gen], sizeof(ks.keyblob_mac_keys[gen]));
+                if (std::memcmp(cmac, ks.encrypted_keyblobs[gen], sizeof(cmac))) {
+                    fprintf(stderr, "[Warning]: Keyblob MAC %02" PRIx32 " is invalid. Are SBK/TSEC key correct?\n", static_cast<u32>(gen));
+                    continue;
+                }
 
-                /* TODO: Keyblobs */
+                /* Decrypt keyblob. */
+                crypto::DecryptAes128Ctr(ks.keyblobs[gen], sizeof(ks.keyblobs[gen]), ks.keyblob_keys[gen], sizeof(ks.keyblob_keys[gen]), ks.encrypted_keyblobs[gen] + sizeof(cmac), crypto::Aes128CtrEncryptor::IvSize, ks.encrypted_keyblobs[gen] + sizeof(cmac) + crypto::Aes128CtrEncryptor::IvSize, sizeof(ks.keyblobs[gen]));
             }
 
             /* Set package1 key/master kek via keyblobs. */
@@ -163,14 +172,35 @@ namespace ams::hactool {
 
             /* Derive newer keydata via tsec. */
             for (int gen = pkg1::KeyGeneration_6_2_0; gen < pkg1::KeyGeneration_Max; ++gen) {
-                SKIP_IF_UNSET(ks.tsec_auth_signatures[gen - pkg1::KeyGeneration_6_2_0]);
+                const auto tsec_gen = gen - pkg1::KeyGeneration_6_2_0;
+                SKIP_IF_UNSET(ks.tsec_auth_signatures[tsec_gen]);
 
-                /* TODO: Derive tsec root keys, newer pk11 keys. */
+                /* Derive TSEC root key. */
+                if (!IsZero(ks.tsec_root_kek, AesKeySize)) {
+                    AesEncryptor128(ks.tsec_root_kek).EncryptBlock(ks.tsec_root_keys[tsec_gen], ks.tsec_auth_signatures[tsec_gen]);
+                }
+
+                /* Derive package1 MAC key. */
+                if (!IsZero(ks.package1_mac_kek, AesKeySize)) {
+                    AesEncryptor128(ks.package1_mac_kek).EncryptBlock(ks.package1_mac_keys[gen], ks.tsec_auth_signatures[tsec_gen]);
+                }
+
+                /* Derive package1 keys. */
+                if (!IsZero(ks.package1_mac_kek, AesKeySize)) {
+                    AesEncryptor128(ks.package1_kek).EncryptBlock(ks.package1_keys[gen], ks.tsec_auth_signatures[tsec_gen]);
+                }
             }
 
-            /* TODO: Derive master keks via tsec root keys. */
+            /* Derive master keks via tsec root keys. */
+            for (int gen = pkg1::KeyGeneration_6_2_0; gen < pkg1::KeyGeneration_Max; ++gen) {
+                const auto tsec_gen = std::min<int>(gen, pkg1::KeyGeneration_8_1_0) - pkg1::KeyGeneration_6_2_0;
+                SKIP_IF_UNSET(ks.tsec_root_keys[tsec_gen]);
+                SKIP_IF_UNSET(ks.master_kek_sources[gen]);
 
-            /* Derive master keks with mariko keydata, preferring thse to other sources. */
+                AesDecryptor128(ks.tsec_root_keys[tsec_gen]).DecryptBlock(ks.master_keks[gen], ks.master_kek_sources[gen]);
+            }
+
+            /* Derive master keks with mariko keydata, preferring these to other sources. */
             for (int gen = pkg1::KeyGeneration_1_0_0; gen < pkg1::KeyGeneration_Max; ++gen) {
                 SKIP_IF_UNSET(ks.mariko_kek);
                 SKIP_IF_UNSET(ks.mariko_master_kek_sources[gen]);
@@ -186,7 +216,78 @@ namespace ams::hactool {
                 AesDecryptor128(ks.master_keks[gen]).DecryptBlock(ks.master_keys[gen], ks.master_key_source);
             }
 
-            /* TODO: Further keygen. */
+            /* Derive remaining keys. */
+            for (int gen = pkg1::KeyGeneration_1_0_0; gen < pkg1::KeyGeneration_Max; ++gen) {
+                SKIP_IF_UNSET(ks.master_keys[gen]);
+
+                /* Declare helper for spl::GenerateAesKek. */
+                const bool can_generate_kek = !IsZero(ks.aes_kek_generation_source, AesKeySize) && !IsZero(ks.aes_key_generation_source, AesKeySize);
+                auto GenerateAesKek = [&](void *dst, const void *src, const void *kek_seed, const void *key_seed = nullptr) {
+                    /* Decrypt the kek seed into a kek. */
+                    u8 kek[AesKeySize];
+                    AesDecryptor128(ks.master_keys[gen]).DecryptBlock(kek, kek_seed);
+
+                    /* Decrypt the source into a kek. */
+                    u8 src_kek[AesKeySize];
+                    AesDecryptor128(kek).DecryptBlock(src_kek, src);
+
+                    /* Decrypt the key seed with the kek, if relevant. */
+                    if (key_seed != nullptr) {
+                        AesDecryptor128(src_kek).DecryptBlock(dst, key_seed);
+                    } else {
+                        std::memcpy(dst, src_kek, sizeof(src_kek));
+                    }
+                };
+
+                /* Derive key area encryption keys. */
+                if (!IsZero(ks.key_area_key_application_source, AesKeySize) && can_generate_kek) {
+                    GenerateAesKek(ks.key_area_key_applications[gen], ks.key_area_key_application_source, ks.aes_kek_generation_source, ks.aes_key_generation_source);
+                }
+                if (!IsZero(ks.key_area_key_ocean_source, AesKeySize) && can_generate_kek) {
+                    GenerateAesKek(ks.key_area_key_oceans[gen], ks.key_area_key_ocean_source, ks.aes_kek_generation_source, ks.aes_key_generation_source);
+                }
+                if (!IsZero(ks.key_area_key_system_source, AesKeySize) && can_generate_kek) {
+                    GenerateAesKek(ks.key_area_key_systems[gen], ks.key_area_key_system_source, ks.aes_kek_generation_source, ks.aes_key_generation_source);
+                }
+
+                /* Derive titlekek. */
+                if (!IsZero(ks.titlekek_source, AesKeySize)) {
+                    AesDecryptor128(ks.master_keys[gen]).DecryptBlock(ks.titlekeks[gen], ks.titlekek_source);
+                }
+
+                /* Derive package2 key. */
+                if (!IsZero(ks.package2_key_source, AesKeySize)) {
+                    AesDecryptor128(ks.master_keys[gen]).DecryptBlock(ks.package2_keys[gen], ks.package2_key_source);
+                }
+
+                /* Derive header keys. */
+                if (gen == pkg1::KeyGeneration_1_0_0 && !IsZero(ks.header_kek_source, AesKeySize) && !IsZero(ks.header_key_source, 2 * AesKeySize) && can_generate_kek) {
+                    u8 header_kek[AesKeySize];
+                    GenerateAesKek(header_kek, ks.header_kek_source, ks.aes_kek_generation_source, ks.aes_key_generation_source);
+                    AesDecryptor128(header_kek).DecryptBlock(ks.header_key + 0 * AesKeySize, ks.header_key_source + 0 * AesKeySize);
+                    AesDecryptor128(header_kek).DecryptBlock(ks.header_key + 1 * AesKeySize, ks.header_key_source + 1 * AesKeySize);
+                }
+
+                /* Derive sd card key. */
+                if (gen == pkg1::KeyGeneration_1_0_0 && !IsZero(ks.sd_card_kek_source, AesKeySize) && can_generate_kek) {
+                    u8 sd_kek[AesKeySize];
+                    GenerateAesKek(sd_kek, ks.sd_card_kek_source, ks.aes_kek_generation_source, ks.aes_key_generation_source);
+
+                    if (!IsZero(ks.sd_card_nca_key_source, sizeof(ks.sd_card_nca_key_source))) {
+                        AesDecryptor128(sd_kek).DecryptBlock(ks.sd_card_keys[0] + 0 * AesKeySize, ks.sd_card_nca_key_source + 0 * AesKeySize);
+                        AesDecryptor128(sd_kek).DecryptBlock(ks.sd_card_keys[0] + 1 * AesKeySize, ks.sd_card_nca_key_source + 1 * AesKeySize);
+                    }
+                    if (!IsZero(ks.sd_card_save_key_source, sizeof(ks.sd_card_save_key_source))) {
+                        AesDecryptor128(sd_kek).DecryptBlock(ks.sd_card_keys[1] + 0 * AesKeySize, ks.sd_card_save_key_source + 0 * AesKeySize);
+                        AesDecryptor128(sd_kek).DecryptBlock(ks.sd_card_keys[1] + 1 * AesKeySize, ks.sd_card_save_key_source + 1 * AesKeySize);
+                    }
+                }
+
+                /* Derive save mac key. */
+                if (gen == pkg1::KeyGeneration_1_0_0 && !IsZero(ks.save_mac_kek_source, AesKeySize) && !IsZero(ks.save_mac_key_source, AesKeySize) && !IsZero(ks.device_key, AesKeySize) && !IsZero(ks.aes_kek_generation_source, AesKeySize)) {
+                    GenerateAesKek(ks.save_mac_key, ks.save_mac_kek_source, ks.aes_kek_generation_source, ks.save_mac_key_source);
+                }
+            }
         }
 
         void DecodeHex(u8 *dst, const char *src, size_t size) {
@@ -247,6 +348,152 @@ namespace ams::hactool {
 
             /* Register with the key manager. */
             km.Register(rights_id, access_key);
+        }
+
+        void PrintKeys(KeySet &ks) {
+            char temp_name[0x100];
+            #define PRINT_KEY(kn) do { if (!IsZero(ks.kn, sizeof(ks.kn))) { printf("%-32s= ", #kn); for (size_t i = 0; i < sizeof(ks.kn); ++i) { printf("%02" PRIX32 "", static_cast<u32>(ks.kn[i])); } printf("\n"); } } while (false)
+            #define PRINT_KEY_WITH_GEN(kn, gn) do { if (!IsZero(ks.kn##s[gn], sizeof(ks.kn##s[gn]))) { util::TSNPrintf(temp_name, sizeof(temp_name), #kn "_%02" PRIx32 "", static_cast<u32>(gn)); printf("%-32s= ", temp_name); for (size_t i = 0; i < sizeof(ks.kn##s[gn]); ++i) { printf("%02" PRIX32 "", static_cast<u32>(ks.kn##s[gn][i])); } printf("\n"); } } while (false)
+
+            PRINT_KEY(secure_boot_key);
+            PRINT_KEY(tsec_key);
+            PRINT_KEY(device_key);
+            PRINT_KEY(tsec_root_kek);
+            PRINT_KEY(package1_mac_kek);
+            PRINT_KEY(package1_kek);
+            printf("\n");
+
+            for (int gen = pkg1::KeyGeneration_6_2_0; gen < pkg1::KeyGeneration_Max; ++gen) {
+                PRINT_KEY_WITH_GEN(tsec_auth_signature, (gen-pkg1::KeyGeneration_6_2_0));
+            }
+            printf("\n");
+
+            for (int gen = pkg1::KeyGeneration_6_2_0; gen < pkg1::KeyGeneration_Max; ++gen) {
+                PRINT_KEY_WITH_GEN(tsec_root_key, (gen-pkg1::KeyGeneration_6_2_0));
+            }
+            printf("\n");
+
+            PRINT_KEY(keyblob_mac_key_source);
+            printf("\n");
+
+            for (int gen = pkg1::KeyGeneration_1_0_0; gen < pkg1::KeyGeneration_6_2_0; ++gen) {
+                PRINT_KEY_WITH_GEN(keyblob_key_source, gen);
+            }
+            printf("\n");
+
+            for (int gen = pkg1::KeyGeneration_1_0_0; gen < pkg1::KeyGeneration_6_2_0; ++gen) {
+                PRINT_KEY_WITH_GEN(keyblob_key, gen);
+            }
+            printf("\n");
+
+            for (int gen = pkg1::KeyGeneration_1_0_0; gen < pkg1::KeyGeneration_6_2_0; ++gen) {
+                PRINT_KEY_WITH_GEN(keyblob_mac_key, gen);
+            }
+            printf("\n");
+
+            for (int gen = pkg1::KeyGeneration_1_0_0; gen < pkg1::KeyGeneration_6_2_0; ++gen) {
+                PRINT_KEY_WITH_GEN(encrypted_keyblob, gen);
+            }
+            printf("\n");
+
+            for (int gen = pkg1::KeyGeneration_1_0_0; gen < pkg1::KeyGeneration_6_2_0; ++gen) {
+                PRINT_KEY_WITH_GEN(keyblob, gen);
+            }
+            printf("\n");
+
+            for (int gen = pkg1::KeyGeneration_6_2_0; gen < pkg1::KeyGeneration_Max; ++gen) {
+                PRINT_KEY_WITH_GEN(master_kek_source, (gen-pkg1::KeyGeneration_6_2_0));
+            }
+            printf("\n");
+
+            PRINT_KEY(mariko_kek);
+            PRINT_KEY(mariko_bek);
+            for (size_t n = 0; n < 12; ++n) {
+                PRINT_KEY_WITH_GEN(mariko_aes_class_key, n);
+            }
+            printf("\n");
+
+            for (int gen = pkg1::KeyGeneration_1_0_0; gen < pkg1::KeyGeneration_Max; ++gen) {
+                PRINT_KEY_WITH_GEN(mariko_master_kek_source, gen);
+            }
+            printf("\n");
+
+            for (int gen = pkg1::KeyGeneration_1_0_0; gen < pkg1::KeyGeneration_Max; ++gen) {
+                PRINT_KEY_WITH_GEN(master_kek, gen);
+            }
+            printf("\n");
+
+            PRINT_KEY(master_key_source);
+            printf("\n");
+
+            for (int gen = pkg1::KeyGeneration_1_0_0; gen < pkg1::KeyGeneration_Max; ++gen) {
+                PRINT_KEY_WITH_GEN(master_key, gen);
+            }
+            printf("\n");
+
+            for (int gen = pkg1::KeyGeneration_1_0_0; gen < pkg1::KeyGeneration_Max; ++gen) {
+                PRINT_KEY_WITH_GEN(package1_key, gen);
+            }
+            printf("\n");
+
+            for (int gen = pkg1::KeyGeneration_6_2_0; gen < pkg1::KeyGeneration_Max; ++gen) {
+                PRINT_KEY_WITH_GEN(package1_mac_key, gen);
+            }
+            printf("\n");
+
+            PRINT_KEY(package2_key_source);
+            printf("\n");
+
+            for (int gen = pkg1::KeyGeneration_1_0_0; gen < pkg1::KeyGeneration_Max; ++gen) {
+                PRINT_KEY_WITH_GEN(package2_key, gen);
+            }
+            printf("\n");
+
+            PRINT_KEY(per_console_key_source);
+            PRINT_KEY(aes_kek_generation_source);
+            PRINT_KEY(aes_key_generation_source);
+            PRINT_KEY(titlekek_source);
+            printf("\n");
+
+            for (int gen = pkg1::KeyGeneration_1_0_0; gen < pkg1::KeyGeneration_Max; ++gen) {
+                PRINT_KEY_WITH_GEN(titlekek, gen);
+            }
+            printf("\n");
+
+            PRINT_KEY(key_area_key_application_source);
+            PRINT_KEY(key_area_key_ocean_source);
+            PRINT_KEY(key_area_key_system_source);
+            PRINT_KEY(sd_card_kek_source);
+            PRINT_KEY(sd_card_save_key_source);
+            PRINT_KEY(sd_card_nca_key_source);
+            PRINT_KEY(save_mac_kek_source);
+            PRINT_KEY(save_mac_key_source);
+            PRINT_KEY(save_mac_key);
+            printf("\n");
+
+            PRINT_KEY(header_key);
+            printf("\n");
+
+            for (int gen = pkg1::KeyGeneration_1_0_0; gen < pkg1::KeyGeneration_Max; ++gen) {
+                PRINT_KEY_WITH_GEN(key_area_key_application, gen);
+            }
+            printf("\n");
+            for (int gen = pkg1::KeyGeneration_1_0_0; gen < pkg1::KeyGeneration_Max; ++gen) {
+                PRINT_KEY_WITH_GEN(key_area_key_ocean, gen);
+            }
+            printf("\n");
+            for (int gen = pkg1::KeyGeneration_1_0_0; gen < pkg1::KeyGeneration_Max; ++gen) {
+                PRINT_KEY_WITH_GEN(key_area_key_system, gen);
+            }
+            printf("\n");
+
+            PRINT_KEY(xci_header_key);
+            printf("\n");
+
+            for (int gen = 0; gen < static_cast<int>(gc::impl::GcCrypto::GcTitleKeyKekIndexMax); ++gen) {
+                PRINT_KEY_WITH_GEN(xci_t1_titlekey_kek, gen);
+            }
+
         }
 
         void LoadExternalKey(KeySet &ks, const char *key, const char *value) {
@@ -319,19 +566,19 @@ namespace ams::hactool {
                 util::TSNPrintf(test_name, sizeof(test_name), "key_area_key_application_%02" PRIx32 "", static_cast<u32>(gen));
                 if (std::strcmp(key, test_name) == 0) {
                     matched_key = 1;
-                    DecodeHex(ks.key_area_keys[gen][0], value, sizeof(ks.key_area_keys[gen][0]));
+                    DecodeHex(ks.key_area_key_applications[gen], value, sizeof(ks.key_area_key_applications[gen]));
                 }
 
                 util::TSNPrintf(test_name, sizeof(test_name), "key_area_key_ocean_%02" PRIx32 "", static_cast<u32>(gen));
                 if (std::strcmp(key, test_name) == 0) {
                     matched_key = 1;
-                    DecodeHex(ks.key_area_keys[gen][1], value, sizeof(ks.key_area_keys[gen][1]));
+                    DecodeHex(ks.key_area_key_oceans[gen], value, sizeof(ks.key_area_key_oceans[gen]));
                 }
 
                 util::TSNPrintf(test_name, sizeof(test_name), "key_area_key_system_%02" PRIx32 "", static_cast<u32>(gen));
                 if (std::strcmp(key, test_name) == 0) {
                     matched_key = 1;
-                    DecodeHex(ks.key_area_keys[gen][2], value, sizeof(ks.key_area_keys[gen][2]));
+                    DecodeHex(ks.key_area_key_systems[gen], value, sizeof(ks.key_area_key_systems[gen]));
                 }
             }
 
@@ -488,6 +735,10 @@ namespace ams::hactool {
             ProcessKeyValueFile(path, buf.get(), file_size, f);
         }
 
+    }
+
+    void Processor::PrintInternalKeys() {
+        PrintKeys(g_keyset);
     }
 
     void Processor::PresetInternalKeys() {

@@ -128,6 +128,8 @@ namespace ams::hactool {
                     options.file_type = FileType::Romfs;
                 } else if (std::strcmp(arg, "pfs") == 0 || std::strcmp(arg, "pfs0") == 0 || std::strcmp(arg, "nsp") == 0) {
                     options.file_type = FileType::Pfs;
+                } else if (std::strcmp(arg, "keygen") == 0 || std::strcmp(arg, "keys") == 0 || std::strcmp(arg, "boot") == 0 || std::strcmp(arg, "boot0") == 0) {
+                    options.file_type = FileType::Keygen;
                 } else {
                     return false;
                 }
@@ -399,7 +401,7 @@ namespace ams::hactool {
         }
 
         /* If we have an input file, we're valid. */
-        options.valid = options.in_file_path != nullptr;
+        options.valid = options.in_file_path != nullptr || options.file_type == FileType::Keygen;
         return options;
     }
 }
